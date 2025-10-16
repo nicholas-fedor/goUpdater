@@ -48,13 +48,13 @@ This is the easiest way to get started. Download the latest release directly fro
 2. **Make it executable**:
 
    ```bash
-   chmod +x goUpdater-linux-amd64
+   chmod +x goUpdater
    ```
 
 3. **Run it directly** (no installation required):
 
    ```bash
-   ./goUpdater-linux-amd64 --help
+   ./goUpdater --help
    ```
 
 The binary is self-contained and handles all privilege escalation automatically when needed.
