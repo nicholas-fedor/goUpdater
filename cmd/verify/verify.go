@@ -1,3 +1,6 @@
+// Copyright © 2025 Nicholas Fedor
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package verify provides the verify command for goUpdater.
 // It handles verifying Go installations and displaying version information.
 package verify

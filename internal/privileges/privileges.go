@@ -1,3 +1,6 @@
+// Copyright © 2025 Nicholas Fedor
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package privileges provides functions to detect privileges and request elevation using sudo.
 // It handles privilege escalation for system operations that require root access.
 package privileges

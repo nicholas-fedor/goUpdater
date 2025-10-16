@@ -1,3 +1,6 @@
+// Copyright © 2025 Nicholas Fedor
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package uninstall provides functionality to remove existing Go installations.
 // It handles safe removal of Go directories and cleanup operations.
 package uninstall

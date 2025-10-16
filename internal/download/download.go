@@ -1,3 +1,6 @@
+// Copyright © 2025 Nicholas Fedor
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package download provides functionality to download Go archives from official sources.
 // It handles version checking, archive retrieval, and integrity verification.
 package download

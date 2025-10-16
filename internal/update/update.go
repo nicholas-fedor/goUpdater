@@ -1,3 +1,6 @@
+// Copyright © 2025 Nicholas Fedor
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package update provides orchestration logic for updating Go installations.
 // It coordinates downloading, installing, and verifying Go updates.
 package update

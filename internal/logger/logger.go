@@ -1,3 +1,6 @@
+// Copyright © 2025 Nicholas Fedor
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package logger provides logging utilities for goUpdater.
 // It uses zerolog for structured logging with configurable verbosity.
 package logger

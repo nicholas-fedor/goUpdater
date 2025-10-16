@@ -1,3 +1,6 @@
+// Copyright © 2025 Nicholas Fedor
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package version provides comprehensive version information for goUpdater.
 // It supports both release binaries built with GoReleaser (using ldflags)
 // and source builds (using debug.ReadBuildInfo for VCS information).

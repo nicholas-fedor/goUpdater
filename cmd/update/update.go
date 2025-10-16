@@ -1,3 +1,6 @@
+// Copyright © 2025 Nicholas Fedor
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package update provides the update command for goUpdater.
 // It handles updating Go to the latest version with privilege escalation.
 package update

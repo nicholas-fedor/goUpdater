@@ -42,7 +42,7 @@ This is the easiest way to get started. Download the latest release directly fro
 1. **Download the binary**:
 
    ```bash
-   wget https://github.com/nicholas-fedor/goUpdater/releases/latest/download/goUpdater-linux-amd64
+   wget https://github.com/nicholas-fedor/goUpdater/releases/latest/download/goUpdater
    ```
 
 2. **Make it executable**:

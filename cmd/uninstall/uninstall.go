@@ -1,3 +1,6 @@
+// Copyright © 2025 Nicholas Fedor
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package uninstall provides the uninstall command for goUpdater.
 // It handles removing Go installations from the system.
 package uninstall

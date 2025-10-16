@@ -1,3 +1,6 @@
+// Copyright © 2025 Nicholas Fedor
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package install provides functionality to install Go from downloaded archives.
 // It handles archive extraction, installation verification, and user interaction.
 package install

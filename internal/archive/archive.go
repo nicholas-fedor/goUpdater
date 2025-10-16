@@ -1,3 +1,6 @@
+// Copyright © 2025 Nicholas Fedor
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package archive provides utilities for handling Go archive files.
 // It includes functions for extracting, validating, and processing Go installation archives.
 package archive

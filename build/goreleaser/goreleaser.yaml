@@ -17,7 +17,13 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser -X github.com/nicholas-fedor/goUpdater/internal/version.goVersion={{.Env.GO_VERSION}} -X github.com/nicholas-fedor/goUpdater/internal/version.platform={{.Runtime.Goos}}/{{.Runtime.Goarch}}
+      - -s -w
+      - -X github.com/nicholas-fedor/goUpdater/internal/version.version={{.Version}}
+      - -X github.com/nicholas-fedor/goUpdater/internal/version.commit={{.Commit}}
+      - -X github.com/nicholas-fedor/goUpdater/internal/version.date={{.Date}}
+      - -X github.com/nicholas-fedor/goUpdater/internal/version.goVersion={{.Env.GO_VERSION}}
+      - -X github.com/nicholas-fedor/goUpdater/internal/version.platform={{.Runtime.Goos}}/{{.Runtime.Goarch}}
+
 
 archives:
   - formats: [tar.gz]
@@ -53,3 +59,20 @@ release:
     owner: nicholas-fedor
     name: goUpdater
   name_template: "{{.Tag}}"
+
+signs:
+  - id: default
+    artifacts: all
+    args:
+      - "--batch"
+      - "--local-user"
+      - "nick@nickfedor.com"
+      - "--yes"
+      - "--pinentry-mode"
+      - "loopback"
+      - "--passphrase"
+      - "${GPG_PASSPHRASE}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"

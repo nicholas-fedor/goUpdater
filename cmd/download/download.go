@@ -1,3 +1,6 @@
+// Copyright © 2025 Nicholas Fedor
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package download provides the download command for goUpdater.
 // It handles downloading the latest Go version archive from official sources.
 package download

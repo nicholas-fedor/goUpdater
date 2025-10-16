@@ -1,3 +1,6 @@
+// Copyright © 2025 Nicholas Fedor
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package verify provides functionality to verify Go installations.
 // It checks Go binary presence and version correctness.
 package verify

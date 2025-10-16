@@ -1,3 +1,6 @@
+// Copyright © 2025 Nicholas Fedor
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package cli provides shared CLI display utilities for goUpdater.
 // It includes functions for formatting output in a consistent tree-like structure,
 // following modern CLI patterns similar to kubectl/docker.
@@ -24,7 +27,7 @@ import (
 //
 //	result := TreeFormat("Go Installation Verification", []string{
 //		"Directory: /usr/local/go",
-//		"Version: go1.21.0",
+//		"Version: go1.25.3",
 //		"Status: verified",
 //	})
 //
@@ -32,7 +35,7 @@ import (
 //
 //	Go Installation Verification
 //	├─ Directory: /usr/local/go
-//	├─ Version: go1.21.0
+//	├─ Version: go1.25.3
 //	└─ Status: verified
 func TreeFormat(title string, items []string) string {
 	var builder strings.Builder

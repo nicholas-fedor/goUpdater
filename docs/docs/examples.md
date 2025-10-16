@@ -268,9 +268,9 @@ jobs:
     steps:
       - name: Download goUpdater
         run: |
-          wget https://github.com/nicholas-fedor/goUpdater/releases/latest/download/goUpdater-linux-amd64
-          chmod +x goUpdater-linux-amd64
-          sudo mv goUpdater-linux-amd64 /usr/local/bin/goUpdater
+          wget https://github.com/nicholas-fedor/goUpdater/releases/latest/download/goUpdater
+          chmod +x goUpdater
+          sudo mv goUpdater /usr/local/bin/goUpdater
 
       - name: Update Go
         run: sudo goUpdater update
@@ -288,8 +288,8 @@ jobs:
 # Multi-stage Docker build with goUpdater
 FROM ubuntu:20.04 AS downloader
 RUN apt-get update && apt-get install -y wget
-RUN wget https://github.com/nicholas-fedor/goUpdater/releases/latest/download/goUpdater-linux-amd64
-RUN chmod +x goUpdater-linux-amd64
+RUN wget https://github.com/nicholas-fedor/goUpdater/releases/latest/download/goUpdater
+RUN chmod +x goUpdater
 
 FROM golang:1.24 AS builder
 COPY --from=downloader goUpdater-linux-amd64 /usr/local/bin/goUpdater
@@ -309,9 +309,9 @@ pipeline {
             steps {
                 sh '''
                     # Download and setup goUpdater
-                    wget https://github.com/nicholas-fedor/goUpdater/releases/latest/download/goUpdater-linux-amd64
-                    chmod +x goUpdater-linux-amd64
-                    sudo mv goUpdater-linux-amd64 /usr/local/bin/goUpdater
+                    wget https://github.com/nicholas-fedor/goUpdater/releases/latest/download/goUpdater
+                    chmod +x goUpdater
+                    sudo mv goUpdater /usr/local/bin/goUpdater
 
                     # Update Go
                     sudo goUpdater update
@@ -845,7 +845,7 @@ mkdir -p goUpdater-deb/usr/local/bin
 
 # Download goUpdater
 wget -O goUpdater-deb/usr/local/bin/goUpdater \
-  https://github.com/nicholas-fedor/goUpdater/releases/latest/download/goUpdater-linux-amd64
+  https://github.com/nicholas-fedor/goUpdater/releases/latest/download/goUpdater
 chmod +x goUpdater-deb/usr/local/bin/goUpdater
 
 # Create control file
