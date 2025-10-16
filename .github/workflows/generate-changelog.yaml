@@ -1,0 +1,54 @@
+name: Generate Changelog
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - cmd/**
+      - internal/**
+      - main.go
+      - go.mod
+      
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # For committing changelog
+      pull-requests: write # For creating PR
+    steps:
+      - name: Checkout
+        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493
+        with:
+          fetch-depth: 0
+
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@e89d40939c28e39f97cf32126055eeae86ba74ec
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+          git_user_signingkey: true
+          git_commit_gpgsign: true
+
+      - name: Generate Changelog
+        uses: orhun/git-cliff-action@d77b37db2e3f7398432d34b72a12aa3e2ba87e51 # v4
+        with:
+          config: build/git-cliff/cliff.toml
+          args: --verbose
+        env:
+          OUTPUT: CHANGELOG.md
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.CHANGELOG_PAT }}
+
+      - name: Create Pull Request for Changelog
+        if: ${{ !fromJson(inputs.dry-run || 'false') }}
+        uses: peter-evans/create-pull-request@d3e081a03ae8d69301ed924bae10d70ea4af94d9
+        with:
+          token: ${{ secrets.CHANGELOG_PAT }}
+          committer: Nick Fedor <nick@nickfedor.com>
+          title: "docs(changelog): update changelog for ${{ github.ref_name }}"
+          commit-message: "docs(changelog): update changelog for ${{ github.ref_name }}"
+          body: "Automated changelog update for ${{ github.ref_name }}"
+          branch: docs/update-changelog-${{ github.ref_name }}
+          delete-branch: true

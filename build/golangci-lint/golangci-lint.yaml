@@ -1,0 +1,148 @@
+---
+# goUpdater - A CLI tool for updating Go.
+# Repository: https://github.com/nicholas-fedor/goUpdater
+# License: AGPL-3.0-or-later
+#
+# Golangci-lint configuration for code quality and consistency enforcement.
+# This configuration enables comprehensive linting with custom settings for
+# complexity, style, and best practices specific to goUpdater.
+
+version: "2"
+
+# Run configuration - controls how golangci-lint executes
+run:
+  timeout: 5m # Maximum time allowed for linting (5 minutes)
+
+# Formatters - code formatting tools to ensure consistent style
+formatters:
+  enable:
+    - gofmt # Standard Go code formatter
+    - goimports # Manages Go import lines, adds missing imports, removes unused ones
+
+# Linters - static analysis tools for code quality and best practices
+linters:
+  enable:
+    - arangolint
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - canonicalheader
+    - containedctx
+    - contextcheck
+    - copyloopvar
+    - cyclop
+    - decorder
+    - dogsled
+    - dupl
+    - dupword
+    - durationcheck
+    - embeddedstructfieldcheck
+    - err113
+    - errchkjson
+    - errname
+    - errorlint
+    - errcheck
+    - exhaustive
+    - exhaustruct
+    - exptostd
+    - fatcontext
+    - forbidigo
+    - forcetypeassert
+    - funcorder
+    - funlen
+    - ginkgolinter
+    - gocheckcompilerdirectives
+    - gochecknoglobals
+    - gochecknoinits
+    - gochecksumtype
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godoclint
+    - godot
+    - godox
+    - goheader
+    - gomoddirectives
+    - gomodguard
+    - goprintffuncname
+    - gosec
+    - gosmopolitan
+    - govet
+    - grouper
+    - iface
+    - importas
+    - inamedparam
+    - interfacebloat
+    - ineffassign
+    - intrange
+    - iotamixing
+    - lll
+    - loggercheck
+    - maintidx
+    - makezero
+    - mirror
+    - misspell
+    - mnd
+    - musttag
+    - nakedret
+    - nestif
+    - nilerr
+    - nilnesserr
+    - nilnil
+    - nlreturn
+    - noctx
+    - noinlineerr
+    - nolintlint
+    - nonamedreturns
+    - nosprintfhostport
+    - paralleltest
+    - perfsprint
+    - prealloc
+    - predeclared
+    - promlinter
+    - protogetter
+    - reassign
+    - recvcheck
+    - revive
+    - rowserrcheck
+    - sloglint
+    - spancheck
+    - sqlclosecheck
+    - staticcheck
+    - tagalign
+    - tagliatelle
+    - testableexamples
+    - testifylint
+    - thelper
+    - tparallel
+    - unconvert
+    - unparam
+    - unqueryvet
+    - unused
+    - usestdlibvars
+    - usetesting
+    - varnamelen
+    - wastedassign
+    - whitespace
+    - wrapcheck
+    - wsl_v5
+    - zerologlint
+  disable:
+    - wsl # deprecated, replaced by wsl_v5 (whitespace linter)
+    - depguard # disabled to allow all imports
+    - ireturn # disabled to allow framework interfaces
+    - testpackage # disabled to allow internal unit test packages
+
+
+
+# Issues configuration - controls how linting issues are reported and filtered
+issues:
+  max-issues-per-linter: 0 # Unlimited issues per linter (0 = no limit)
+  max-same-issues: 0 # Unlimited same issues (0 = no limit)
+  exclude-rules:
+    - path: internal/version/version.go
+      linters:
+        - gochecknoglobals
+        - varnamelen
