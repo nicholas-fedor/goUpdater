@@ -21,22 +21,22 @@ import (
 )
 
 // versionMutex protects access to global version variables.
-var versionMutex sync.Mutex //nolint:gochecknoglobals
+var versionMutex sync.Mutex
 
 // versionOnce ensures debug.ReadBuildInfo is only called once.
-var versionOnce sync.Once //nolint:gochecknoglobals
+var versionOnce sync.Once
 
 // version is set at build time using ldflags.
 var version string
 
 // commit is set at build time using ldflags.
-var commit string //nolint:gochecknoglobals
+var commit string
 
 // date is set at build time using ldflags.
-var date string //nolint:gochecknoglobals
+var date string
 
 // goVersion is set at build time using ldflags.
-var goVersion string //nolint:gochecknoglobals
+var goVersion string
 
 const (
 	formatDefault outputFormat = ""
@@ -46,7 +46,7 @@ const (
 )
 
 // platform is set at build time using ldflags.
-var platform string //nolint:gochecknoglobals
+var platform string
 
 // VersionInfo holds detailed version information for the application.
 // It includes version, commit hash, build date, Go version, and platform.

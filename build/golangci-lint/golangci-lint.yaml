@@ -1,4 +1,3 @@
----
 # goUpdater - A CLI tool for updating Go.
 # Repository: https://github.com/nicholas-fedor/goUpdater
 # License: AGPL-3.0-or-later
@@ -134,15 +133,15 @@ linters:
     - depguard # disabled to allow all imports
     - ireturn # disabled to allow framework interfaces
     - testpackage # disabled to allow internal unit test packages
-
-# Exclude rules - specific rules to exclude for certain paths or linters
-exclude-rules:
- - path: internal/version/version.go
-   linters:
-     - gochecknoglobals
-     - varnamelen
+  exclusions:
+    rules:
+      - path: internal/version/version.go
+        linters:
+          - gochecknoglobals
+          - varnamelen
+        exclude: true
 
 # Issues configuration - controls how linting issues are reported and filtered
 issues:
-  max-issues-per-linter: 0 # Unlimited issues per linter (0 = no limit)
-  max-same-issues: 0 # Unlimited same issues (0 = no limit)
+ max-issues-per-linter: 0 # Unlimited issues per linter (0 = no limit)
+ max-same-issues: 0 # Unlimited same issues (0 = no limit)
