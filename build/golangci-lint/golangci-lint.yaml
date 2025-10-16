@@ -135,14 +135,14 @@ linters:
     - ireturn # disabled to allow framework interfaces
     - testpackage # disabled to allow internal unit test packages
 
-
+# Exclude rules - specific rules to exclude for certain paths or linters
+exclude-rules:
+ - path: internal/version/version.go
+   linters:
+     - gochecknoglobals
+     - varnamelen
 
 # Issues configuration - controls how linting issues are reported and filtered
 issues:
   max-issues-per-linter: 0 # Unlimited issues per linter (0 = no limit)
   max-same-issues: 0 # Unlimited same issues (0 = no limit)
-  exclude-rules:
-    - path: internal/version/version.go
-      linters:
-        - gochecknoglobals
-        - varnamelen
