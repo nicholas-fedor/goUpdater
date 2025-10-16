@@ -99,7 +99,73 @@ func validateHeaderName(headerName string) error {
 	return nil
 }
 
+// validateSymlinkChain validates that a symlink chain resolves within the destination directory.
+func validateSymlinkChain(resolved, destDir string) error {
+	evaled, err := filepath.EvalSymlinks(resolved)
+	if err != nil {
+		return fmt.Errorf("cannot resolve existing symlink: %w", err)
+	}
+
+	evaled = filepath.Clean(evaled)
+	if !strings.HasPrefix(evaled, destDir+string(filepath.Separator)) && evaled != destDir {
+		return fmt.Errorf("symlink chain resolves outside destination: %s: %w", evaled, errInvalidPath)
+	}
+
+	return nil
+}
+
+// validateResolvedPath resolves any symlinks in the target path and validates
+// that the resolved path stays within the destination directory.
+func validateResolvedPath(targetPath, destDir string) error {
+	resolved, err := filepath.EvalSymlinks(targetPath)
+	if err == nil {
+		resolved = filepath.Clean(resolved)
+		if !strings.HasPrefix(resolved, destDir+string(filepath.Separator)) && resolved != destDir {
+			return fmt.Errorf("resolved path escapes destination directory: %s: %w", resolved, errInvalidPath)
+		}
+	}
+
+	return nil
+}
+
+// validateLinkname validates the linkname for symlinks and hard links to prevent symlink attacks.
+// It ensures the linkname does not contain absolute paths or ".." sequences, resolves the path
+// relative to the base directory, and checks that the resolved path stays within the destination directory.
+// Additionally, if the resolved path exists and is a symlink, it resolves any symlink chains and verifies
+// the final resolved path is within the destination directory.
+func validateLinkname(linkname, baseDir, destDir string) error {
+	if filepath.IsAbs(linkname) || strings.Contains(linkname, "..") {
+		return fmt.Errorf("invalid linkname: %s: %w", linkname, errInvalidPath)
+	}
+
+	resolved := filepath.Join(baseDir, linkname)
+	resolved = filepath.Clean(resolved)
+
+	// Check if resolved is within destDir
+	if !strings.HasPrefix(resolved, destDir+string(filepath.Separator)) && resolved != destDir {
+		return fmt.Errorf("linkname resolves outside destination: %s: %w", linkname, errInvalidPath)
+	}
+
+	// Additional validation using filepath.Rel
+	rel, err := filepath.Rel(destDir, resolved)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return fmt.Errorf("linkname resolves outside destination: %s: %w", linkname, errInvalidPath)
+	}
+
+	// If the resolved path exists and is a symlink, resolve the symlink chain
+	info, err := os.Lstat(resolved)
+	if err == nil && info.Mode()&os.ModeSymlink != 0 {
+		err = validateSymlinkChain(resolved, destDir)
+		if err != nil {
+			return fmt.Errorf("cannot resolve existing symlink: %s: %w", linkname, err)
+		}
+	}
+
+	return nil
+}
+
 // processTarEntry processes a single tar entry, validating and extracting it to the destination directory.
+// It performs multiple layers of path validation including symlink resolution to prevent path traversal attacks.
 func processTarEntry(tarReader *tar.Reader, header *tar.Header, destDir string) error {
 	// Validate the header name
 	err := validateHeaderName(header.Name)
@@ -139,12 +205,20 @@ func processTarEntry(tarReader *tar.Reader, header *tar.Header, destDir string) 
 		return err
 	}
 
+	// Validate resolved path to prevent symlink-based path traversal attacks
+	// This accounts for previously extracted symlinks that could redirect the extraction path
+	err = validateResolvedPath(targetPath, cleanDestDir)
+	if err != nil {
+		return err
+	}
+
 	// gosec G305 is triggered by filepath.Join, but we have validated the path thoroughly above
 	// The path is safe because:
 	// 1. header.Name is validated to not contain .. or be absolute
 	// 2. targetPath is checked to be within cleanDestDir
 	// 3. ValidatePath ensures no traversal
-	return ExtractEntry(tarReader, header, targetPath)
+	// 4. Symlinks in the path are resolved and validated to stay within cleanDestDir
+	return ExtractEntry(tarReader, header, targetPath, cleanDestDir, cleanDestDir)
 }
 
 // ValidatePath ensures the extracted path is within the installation directory.
@@ -217,10 +291,16 @@ func extractRegularFile(tarReader *tar.Reader, targetPath string, mode os.FileMo
 	return nil
 }
 
-// extractSymlink creates a symlink.
-func extractSymlink(targetPath, linkname string) error {
+// extractSymlink creates a symlink after validating the linkname.
+func extractSymlink(targetPath, linkname, baseDir, destDir string) error {
+	// Validate the linkname to prevent symlink attacks
+	err := validateLinkname(linkname, baseDir, destDir)
+	if err != nil {
+		return err
+	}
+
 	// Create symlink
-	err := os.Symlink(linkname, targetPath)
+	err = os.Symlink(linkname, targetPath)
 	if err != nil {
 		return fmt.Errorf("failed to create symlink %s -> %s: %w", targetPath, linkname, err)
 	}
@@ -228,10 +308,16 @@ func extractSymlink(targetPath, linkname string) error {
 	return nil
 }
 
-// extractHardLink creates a hard link.
-func extractHardLink(targetPath, linkname string) error {
+// extractHardLink creates a hard link after validating the linkname.
+func extractHardLink(targetPath, linkname, baseDir, destDir string) error {
+	// Validate the linkname to prevent hard link attacks
+	err := validateLinkname(linkname, baseDir, destDir)
+	if err != nil {
+		return err
+	}
+
 	// Create hard link
-	err := os.Link(linkname, targetPath)
+	err = os.Link(linkname, targetPath)
 	if err != nil {
 		return fmt.Errorf("failed to create hard link %s -> %s: %w", targetPath, linkname, err)
 	}
@@ -242,7 +328,8 @@ func extractHardLink(targetPath, linkname string) error {
 // ExtractEntry extracts a single entry from the tar archive.
 // It handles directories, regular files, symlinks, and hard links, preserving permissions from the tar header.
 // Files and directories are created permissively then chmod to the correct permissions from header.Mode & 0777.
-func ExtractEntry(tarReader *tar.Reader, header *tar.Header, targetPath string) error {
+// For symlinks and hard links, the linkname is validated to prevent symlink attacks.
+func ExtractEntry(tarReader *tar.Reader, header *tar.Header, targetPath, baseDir, destDir string) error {
 	// Extract permissions from tar header, masking to standard Unix permissions
 	mode := os.FileMode(header.Mode & unixPermMask) // #nosec G115
 
@@ -254,10 +341,10 @@ func ExtractEntry(tarReader *tar.Reader, header *tar.Header, targetPath string) 
 		return extractRegularFile(tarReader, targetPath, mode)
 
 	case tar.TypeSymlink:
-		return extractSymlink(targetPath, header.Linkname)
+		return extractSymlink(targetPath, header.Linkname, baseDir, destDir)
 
 	case tar.TypeLink:
-		return extractHardLink(targetPath, header.Linkname)
+		return extractHardLink(targetPath, header.Linkname, baseDir, destDir)
 
 	default:
 		// Skip unsupported entry types (e.g., character devices, block devices)
