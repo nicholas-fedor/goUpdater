@@ -34,8 +34,8 @@ Output formats:
 - short: Only version number
 - verbose: All available information
 - json: JSON formatted output`,
-		Run: func(_ *cobra.Command, _ []string) {
-			version.GetVersion(format, jsonFlag, shortFlag, verboseFlag)
+		Run: func(cmd *cobra.Command, _ []string) {
+			version.GetVersion(cmd.OutOrStdout(), format, jsonFlag, shortFlag, verboseFlag)
 		},
 	}
 

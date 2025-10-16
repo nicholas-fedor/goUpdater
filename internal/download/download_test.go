@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -229,10 +230,13 @@ func TestGetPlatformFile(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
+			// Log the current runtime platform for debugging
+			t.Logf("Current runtime.GOOS: %s, runtime.GOARCH: %s", runtime.GOOS, runtime.GOARCH)
+
 			// We can't modify runtime.GOOS/GOARCH, so we'll test with current platform
 			// and adjust the test data accordingly
-			currentGOOS := "linux" // Assume test environment
-			currentGOARCH := "amd64"
+			currentGOOS := runtime.GOOS
+			currentGOARCH := runtime.GOARCH
 
 			if testCase.goos != currentGOOS || testCase.goarch != currentGOARCH {
 				// Skip tests that don't match current platform
@@ -250,6 +254,8 @@ func TestGetPlatformFile(t *testing.T) {
 
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
+
+				return
 			}
 
 			if file.Filename != testCase.expected {

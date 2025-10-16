@@ -248,7 +248,7 @@ func TestDisplay(t *testing.T) {
 			reader, writer, _ := os.Pipe()
 			os.Stdout = writer
 
-			GetVersion("", false, false, false)
+			GetVersion(writer, "", false, false, false)
 
 			_ = writer.Close()
 
@@ -281,7 +281,7 @@ func TestTimeParsing(t *testing.T) {
 	reader, writer, _ := os.Pipe()
 	os.Stdout = writer
 
-	GetVersion("", false, false, false)
+	GetVersion(os.Stdout, "", false, false, false)
 
 	_ = writer.Close()
 
@@ -655,7 +655,7 @@ func TestDisplayShort(t *testing.T) {
 	reader, writer, _ := os.Pipe()
 	os.Stdout = writer
 
-	displayShort(GetVersionInfo())
+	displayShort(os.Stdout, GetVersionInfo())
 
 	_ = writer.Close()
 	os.Stdout = oldStdout
@@ -684,7 +684,7 @@ func TestDisplayVerbose(t *testing.T) {
 	reader, writer, _ := os.Pipe()
 	os.Stdout = writer
 
-	displayVerbose(GetVersionInfo())
+	displayVerbose(os.Stdout, GetVersionInfo())
 
 	_ = writer.Close()
 	os.Stdout = oldStdout
@@ -719,7 +719,7 @@ func TestDisplayJSON(t *testing.T) {
 	reader, writer, _ := os.Pipe()
 	os.Stdout = writer
 
-	displayJSON(GetVersionInfo())
+	displayJSON(os.Stdout, GetVersionInfo())
 
 	_ = writer.Close()
 	os.Stdout = oldStdout
