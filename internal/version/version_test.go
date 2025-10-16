@@ -249,7 +249,7 @@ func TestDisplay(t *testing.T) {
 			os.Stdout = writer
 			_ = oldStdout
 
-			GetVersion(writer, "", false, false, false)
+			Display(writer)
 
 			_ = writer.Close()
 
@@ -272,6 +272,7 @@ func TestDisplay(t *testing.T) {
 // TestTimeParsing tests time parsing and formatting in Display.
 func TestTimeParsing(t *testing.T) {
 	t.Parallel()
+
 	resetGlobals()
 
 	SetVersion("1.0.0")
@@ -284,7 +285,7 @@ func TestTimeParsing(t *testing.T) {
 	os.Stdout = writer
 	_ = oldStdout
 
-	GetVersion(os.Stdout, "", false, false, false)
+	Display(writer)
 
 	_ = writer.Close()
 

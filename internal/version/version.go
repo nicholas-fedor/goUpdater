@@ -168,7 +168,7 @@ func GetVersion(w io.Writer, format string, jsonFlag, shortFlag, verboseFlag boo
 // The output includes version, commit, date, goVersion, and platform information
 // in a tree-like structure, only showing fields that have values.
 func Display(w io.Writer) {
-	displayVersion(w, formatDefault)
+	displayDefault(w, GetVersionInfo())
 }
 
 // getInfo returns the version information, initializing it if necessary.
