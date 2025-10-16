@@ -4,8 +4,6 @@
  * work well for content-centric websites.
  */
 
-@layer docusaurus.infima, components;
-
 /* You can override the default Infima variables here. */
 :root {
   --ifm-color-primary: #5ac9e2;
