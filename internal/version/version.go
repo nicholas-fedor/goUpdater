@@ -163,6 +163,14 @@ func GetVersion(w io.Writer, format string, jsonFlag, shortFlag, verboseFlag boo
 	displayVersion(w, determineFormat(format, jsonFlag, shortFlag, verboseFlag))
 }
 
+// Display displays version information in the default format.
+// It provides a simple interface for displaying version information without flags.
+// The output includes version, commit, date, goVersion, and platform information
+// in a tree-like structure, only showing fields that have values.
+func Display(w io.Writer) {
+	displayVersion(w, formatDefault)
+}
+
 // getInfo returns the version information, initializing it if necessary.
 // This function ensures thread-safe initialization of build information.
 func getInfo() Info { //nolint:gocognit,cyclop
