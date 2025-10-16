@@ -4,11 +4,70 @@
 package privileges
 
 import (
+	"context"
 	"errors"
+	"os"
+	"os/exec"
+	"strings"
 	"testing"
 )
 
 var errCallback = errors.New("callback error")
+
+// isRunningInContainer detects if the test is running in a container environment.
+// It checks for common container indicators like /.dockerenv file, cgroup entries,
+// or environment variables that indicate containerized execution.
+func isRunningInContainer() bool {
+	// Check for Docker container marker
+	_, err := os.Stat("/.dockerenv")
+	if err == nil {
+		return true
+	}
+
+	// Check cgroup for container runtime indicators
+	data, err := os.ReadFile("/proc/1/cgroup")
+	if err == nil {
+		content := string(data)
+
+		containerIndicators := []string{"docker", "containerd", "lxc", "podman", "k8s", "container"}
+		for _, indicator := range containerIndicators {
+			if strings.Contains(content, indicator) {
+				return true
+			}
+		}
+	}
+
+	// Check for container environment variables
+	containerEnvVars := []string{"CONTAINER", "DOCKER_CONTAINER", "KUBERNETES_SERVICE_HOST"}
+	for _, envVar := range containerEnvVars {
+		if os.Getenv(envVar) != "" {
+			return true
+		}
+	}
+
+	// Check if we're running in a restricted environment (no new privileges)
+	// This is a common indicator of containerized execution
+	data, err = os.ReadFile("/proc/self/status")
+	if err == nil {
+		content := string(data)
+		if strings.Contains(content, "NoNewPrivs:\t1") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isSudoAvailable checks if the sudo command is available and functional on the system.
+// In container environments, sudo may be present but restricted.
+func isSudoAvailable() bool {
+	// Try to run sudo -n true to check if sudo works without password prompt
+	// -n prevents prompting for password
+	cmd := exec.CommandContext(context.Background(), "sudo", "-n", "true")
+	err := cmd.Run()
+
+	return err == nil
+}
 
 func TestIsRoot(t *testing.T) {
 	t.Parallel()
@@ -52,6 +111,10 @@ func TestRequestElevation(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
+			if isRunningInContainer() || !isSudoAvailable() {
+				t.Skip("Skipping privilege escalation test in container or without sudo")
+			}
+
 			err := RequestElevation()
 			if (err != nil) != testCase.expectedErr {
 				t.Errorf("RequestElevation() error = %v, wantErr %v", err, testCase.expectedErr)
@@ -62,6 +125,10 @@ func TestRequestElevation(t *testing.T) {
 
 func TestRequestSudo(t *testing.T) {
 	t.Parallel()
+
+	if isRunningInContainer() || !isSudoAvailable() {
+		t.Skip("Skipping privilege escalation test in container or without sudo")
+	}
 
 	// Test that RequestSudo calls RequestElevation
 	// Since requestElevation is no longer a global variable, we can't mock it directly
@@ -93,62 +160,70 @@ func TestHandleElevationError(t *testing.T) {
 	t.Skip("HandleElevationError calls os.Exit, making it difficult to test directly")
 }
 
-func TestElevateAndExecute(t *testing.T) {
+func TestElevateAndExecute_AlreadyRoot(t *testing.T) {
 	t.Parallel()
 
-	t.Run("already root", func(t *testing.T) {
-		t.Parallel()
+	if isRunningInContainer() || !isSudoAvailable() {
+		t.Skip("Skipping privilege escalation test in container or without sudo")
+	}
 
-		// Test that the function doesn't panic when already root
-		err := ElevateAndExecute(func() error {
-			return nil
-		})
-		// The function may return an error or nil depending on root status
-		_ = err // We don't assert since it depends on runtime conditions
+	// Test that the function doesn't panic when already root
+	err := ElevateAndExecute(func() error {
+		return nil
 	})
+	// The function may return an error or nil depending on root status
+	_ = err // We don't assert since it depends on runtime conditions
+}
 
-	t.Run("callback returns error", func(t *testing.T) {
-		t.Parallel()
+func TestElevateAndExecute_CallbackError(t *testing.T) {
+	t.Parallel()
 
-		err := ElevateAndExecute(func() error {
-			return errCallback
-		})
-		// If already root, should return the callback error
-		if IsRoot() && !errors.Is(err, errCallback) {
-			t.Errorf("expected callback error %v, got %v", errCallback, err)
-		}
-		// If not root, should return nil (since RequestElevation fails and exits)
-		if !IsRoot() && err != nil {
-			t.Errorf("expected nil error when not root (RequestElevation exits), got %v", err)
-		}
+	if isRunningInContainer() || !isSudoAvailable() {
+		t.Skip("Skipping privilege escalation test in container or without sudo")
+	}
+
+	err := ElevateAndExecute(func() error {
+		return errCallback
 	})
+	// If already root, should return the callback error
+	if IsRoot() && !errors.Is(err, errCallback) {
+		t.Errorf("expected callback error %v, got %v", errCallback, err)
+	}
+	// If not root, should return nil (since RequestElevation fails and exits)
+	if !IsRoot() && err != nil {
+		t.Errorf("expected nil error when not root (RequestElevation exits), got %v", err)
+	}
+}
 
-	t.Run("callback panics", func(t *testing.T) {
-		t.Parallel()
+func TestElevateAndExecute_CallbackPanic(t *testing.T) {
+	t.Parallel()
 
-		// Test that panics in callback are handled properly
-		// Note: In the current implementation, panics in the callback are not caught
-		// This test documents the current behavior
-		defer func() {
-			if r := recover(); r != nil {
-				// Panic was not handled by ElevateAndExecute, which is expected
-				// The test framework will catch it
-				_ = r // Use the recovered value to avoid empty block lint
-			}
-		}()
+	if isRunningInContainer() || !isSudoAvailable() {
+		t.Skip("Skipping privilege escalation test in container or without sudo")
+	}
 
-		err := ElevateAndExecute(func() error {
-			panic("test panic")
-		})
-		// If already root, the panic propagates (current behavior)
-		if IsRoot() && err == nil {
-			t.Error("expected panic to propagate (current behavior)")
+	// Test that panics in callback are handled properly
+	// Note: In the current implementation, panics in the callback are not caught
+	// This test documents the current behavior
+	defer func() {
+		if r := recover(); r != nil {
+			// Panic was not handled by ElevateAndExecute, which is expected
+			// The test framework will catch it
+			_ = r // Use the recovered value to avoid empty block lint
 		}
-		// If not root, should return nil (since RequestElevation fails and exits)
-		if !IsRoot() && err != nil {
-			t.Errorf("expected nil error when not root (RequestElevation exits), got %v", err)
-		}
+	}()
+
+	err := ElevateAndExecute(func() error {
+		panic("test panic")
 	})
+	// If already root, the panic propagates (current behavior)
+	if IsRoot() && err == nil {
+		t.Error("expected panic to propagate (current behavior)")
+	}
+	// If not root, should return nil (since RequestElevation fails and exits)
+	if !IsRoot() && err != nil {
+		t.Errorf("expected nil error when not root (RequestElevation exits), got %v", err)
+	}
 }
 
 func TestRequestElevation_ErrorScenarios(t *testing.T) {
@@ -160,6 +235,10 @@ func TestRequestElevation_ErrorScenarios(t *testing.T) {
 	t.Run("already root returns nil", func(t *testing.T) {
 		t.Parallel()
 
+		if isRunningInContainer() || !isSudoAvailable() {
+			t.Skip("Skipping privilege escalation test in container or without sudo")
+		}
+
 		// If we're already root, RequestElevation should return nil
 		err := RequestElevation()
 		if IsRoot() && err != nil {
@@ -169,6 +248,10 @@ func TestRequestElevation_ErrorScenarios(t *testing.T) {
 
 	t.Run("non-root returns error", func(t *testing.T) {
 		t.Parallel()
+
+		if isRunningInContainer() || !isSudoAvailable() {
+			t.Skip("Skipping privilege escalation test in container or without sudo")
+		}
 
 		// If we're not root, RequestElevation should return an error (syscall.Exec fails in test)
 		err := RequestElevation()
@@ -214,6 +297,10 @@ func TestIsRoot_Consistency(t *testing.T) {
 
 func TestRequestSudo_Deprecated(t *testing.T) {
 	t.Parallel()
+
+	if isRunningInContainer() || !isSudoAvailable() {
+		t.Skip("Skipping privilege escalation test in container or without sudo")
+	}
 
 	// Test that RequestSudo still works (for backward compatibility)
 	err := RequestSudo()

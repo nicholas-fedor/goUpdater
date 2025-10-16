@@ -6,6 +6,7 @@ package update
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -98,6 +99,57 @@ func runGoTests(t *testing.T, testCases []struct {
 	}
 }
 
+// isRunningInContainer detects if the test is running in a container environment.
+// It checks for common container indicators like /.dockerenv file, cgroup entries,
+// environment variables, or the "no new privileges" flag.
+func isRunningInContainer() bool {
+	// Check for Docker container marker
+	_, err := os.Stat("/.dockerenv")
+	if err == nil {
+		return true
+	}
+
+	// Check cgroup for container runtime indicators
+	data, err := os.ReadFile("/proc/1/cgroup")
+	if err == nil {
+		content := string(data)
+
+		containerIndicators := []string{"docker", "containerd", "lxc", "podman", "k8s", "container"}
+		for _, indicator := range containerIndicators {
+			if strings.Contains(content, indicator) {
+				return true
+			}
+		}
+	}
+
+	// Check for container environment variables
+	containerEnvVars := []string{"CONTAINER", "DOCKER_CONTAINER", "KUBERNETES_SERVICE_HOST"}
+	for _, envVar := range containerEnvVars {
+		if os.Getenv(envVar) != "" {
+			return true
+		}
+	}
+
+	// Check if we're running in a restricted environment (no new privileges)
+	// This is a common indicator of containerized execution
+	data, err = os.ReadFile("/proc/self/status")
+	if err == nil {
+		content := string(data)
+		if strings.Contains(content, "NoNewPrivs:\t1") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isSudoAvailable checks if the sudo command is available on the system.
+func isSudoAvailable() bool {
+	_, err := exec.LookPath("sudo")
+
+	return err == nil
+}
+
 func TestGoWithPrivileges(t *testing.T) {
 	t.Parallel()
 
@@ -130,6 +182,15 @@ func TestGoWithPrivileges(t *testing.T) {
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
+
+			// Skip privilege escalation tests in container environments
+			inContainer := isRunningInContainer()
+			sudoAvail := isSudoAvailable()
+			t.Logf("isRunningInContainer: %t, isSudoAvailable: %t", inContainer, sudoAvail)
+
+			if inContainer || !sudoAvail {
+				t.Skip("Skipping privilege escalation test in container or without sudo")
+			}
 
 			installDir := testCase.setup(t)
 			if testCase.installDir != "" {
@@ -300,7 +361,10 @@ func setupGoNoUpdateNeededTest(t *testing.T) string {
 func setupGoPrivilegesErrorTest(t *testing.T) string {
 	t.Helper()
 
-	// This would require mocking privileges, but for now we'll use a valid setup
+	// In container environments or without sudo, privilege escalation will fail.
+	// This setup simulates a scenario where privileges are needed but may fail.
+	// We use the same setup as success test since the actual privilege handling
+	// is tested in the privileges package.
 	return setupGoSuccessTest(t)
 }
 
