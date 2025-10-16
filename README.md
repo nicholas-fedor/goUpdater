@@ -32,13 +32,13 @@ The tool is designed to work with the official Go distribution from [go.dev](htt
 2. Make the binary executable:
 
    ```bash
-   chmod +x goUpdater-linux-amd64
+   chmod +x goUpdater
    ```
 
 3. Verify the installation:
 
    ```bash
-   ./goUpdater-linux-amd64 version
+   ./goUpdater version
    ```
 
 ## Usage
