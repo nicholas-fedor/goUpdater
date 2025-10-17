@@ -247,11 +247,13 @@ func TestDisplay(t *testing.T) {
 			oldStdout := os.Stdout
 			reader, writer, _ := os.Pipe()
 			os.Stdout = writer
+			_ = oldStdout
 
-			GetVersion("", false, false, false)
+			Display(writer)
 
 			_ = writer.Close()
 
+			_ = oldStdout
 			os.Stdout = oldStdout
 
 			buf := make([]byte, 1024)
@@ -270,6 +272,7 @@ func TestDisplay(t *testing.T) {
 // TestTimeParsing tests time parsing and formatting in Display.
 func TestTimeParsing(t *testing.T) {
 	t.Parallel()
+
 	resetGlobals()
 
 	SetVersion("1.0.0")
@@ -280,11 +283,13 @@ func TestTimeParsing(t *testing.T) {
 	oldStdout := os.Stdout
 	reader, writer, _ := os.Pipe()
 	os.Stdout = writer
+	_ = oldStdout
 
-	GetVersion("", false, false, false)
+	Display(writer)
 
 	_ = writer.Close()
 
+	_ = oldStdout
 	os.Stdout = oldStdout
 
 	buf := make([]byte, 1024)
@@ -654,10 +659,12 @@ func TestDisplayShort(t *testing.T) {
 	oldStdout := os.Stdout
 	reader, writer, _ := os.Pipe()
 	os.Stdout = writer
+	_ = oldStdout
 
-	displayShort(GetVersionInfo())
+	displayShort(os.Stdout, GetVersionInfo())
 
 	_ = writer.Close()
+	_ = oldStdout
 	os.Stdout = oldStdout
 
 	buf := make([]byte, 1024)
@@ -683,10 +690,12 @@ func TestDisplayVerbose(t *testing.T) {
 	oldStdout := os.Stdout
 	reader, writer, _ := os.Pipe()
 	os.Stdout = writer
+	_ = oldStdout
 
-	displayVerbose(GetVersionInfo())
+	displayVerbose(os.Stdout, GetVersionInfo())
 
 	_ = writer.Close()
+	_ = oldStdout
 	os.Stdout = oldStdout
 
 	buf := make([]byte, 1024)
@@ -718,10 +727,12 @@ func TestDisplayJSON(t *testing.T) {
 	oldStdout := os.Stdout
 	reader, writer, _ := os.Pipe()
 	os.Stdout = writer
+	_ = oldStdout
 
-	displayJSON(GetVersionInfo())
+	displayJSON(os.Stdout, GetVersionInfo())
 
 	_ = writer.Close()
+	_ = oldStdout
 	os.Stdout = oldStdout
 
 	buf := make([]byte, 1024)

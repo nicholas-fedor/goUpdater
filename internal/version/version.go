@@ -11,6 +11,7 @@ package version
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"runtime/debug"
 	"strconv"
@@ -20,22 +21,22 @@ import (
 )
 
 // versionMutex protects access to global version variables.
-var versionMutex sync.Mutex //nolint:gochecknoglobals
+var versionMutex sync.Mutex
 
 // versionOnce ensures debug.ReadBuildInfo is only called once.
-var versionOnce sync.Once //nolint:gochecknoglobals
+var versionOnce sync.Once
 
 // version is set at build time using ldflags.
 var version string
 
 // commit is set at build time using ldflags.
-var commit string //nolint:gochecknoglobals
+var commit string
 
 // date is set at build time using ldflags.
-var date string //nolint:gochecknoglobals
+var date string
 
 // goVersion is set at build time using ldflags.
-var goVersion string //nolint:gochecknoglobals
+var goVersion string
 
 const (
 	formatDefault outputFormat = ""
@@ -45,7 +46,7 @@ const (
 )
 
 // platform is set at build time using ldflags.
-var platform string //nolint:gochecknoglobals
+var platform string
 
 // VersionInfo holds detailed version information for the application.
 // It includes version, commit hash, build date, Go version, and platform.
@@ -158,8 +159,16 @@ func GetVersionInfo() VersionInfo {
 
 // GetVersion displays version information with the given flags.
 // It handles output formatting for the version display.
-func GetVersion(format string, jsonFlag, shortFlag, verboseFlag bool) {
-	displayVersion(determineFormat(format, jsonFlag, shortFlag, verboseFlag))
+func GetVersion(w io.Writer, format string, jsonFlag, shortFlag, verboseFlag bool) {
+	displayVersion(w, determineFormat(format, jsonFlag, shortFlag, verboseFlag))
+}
+
+// Display displays version information in the default format.
+// It provides a simple interface for displaying version information without flags.
+// The output includes version, commit, date, goVersion, and platform information
+// in a tree-like structure, only showing fields that have values.
+func Display(w io.Writer) {
+	displayDefault(w, GetVersionInfo())
 }
 
 // getInfo returns the version information, initializing it if necessary.
@@ -238,81 +247,81 @@ func determineFormat(format string, jsonFlag, shortFlag, verboseFlag bool) outpu
 // displayVersion displays version information in the specified format.
 // It handles different output formats including default tree-like structure,
 // short version only, verbose with all details, and JSON format.
-func displayVersion(format outputFormat) {
+func displayVersion(writer io.Writer, format outputFormat) {
 	info := GetVersionInfo()
 
 	switch format {
 	case formatShort:
-		displayShort(info)
+		displayShort(writer, info)
 	case formatVerbose:
-		displayVerbose(info)
+		displayVerbose(writer, info)
 	case formatJSON:
-		displayJSON(info)
+		displayJSON(writer, info)
 	case formatDefault:
-		displayDefault(info)
+		displayDefault(writer, info)
 	}
 }
 
 // displayDefault displays version information in a tree-like structure with visual hierarchy.
 // It follows modern CLI patterns similar to kubectl/docker, using consistent alignment
 // and separators for clean layout.
-func displayDefault(info VersionInfo) {
-	_, _ = fmt.Fprintf(os.Stdout, "goUpdater %s\n", info.Version)
+func displayDefault(writer io.Writer, info VersionInfo) {
+	_, _ = fmt.Fprintf(writer, "goUpdater %s\n", info.Version)
 
 	if info.Commit != "" {
-		_, _ = fmt.Fprintf(os.Stdout, "├─ Commit: %s\n", info.Commit)
+		_, _ = fmt.Fprintf(writer, "├─ Commit: %s\n", info.Commit)
 	}
 
 	if info.Date != "" {
 		t, err := time.Parse(time.RFC3339, info.Date)
 		if err == nil {
 			formatted := t.UTC().Format("January 2, 2006 at 3:04 PM UTC")
-			_, _ = fmt.Fprintf(os.Stdout, "├─ Built: %s\n", formatted)
+			_, _ = fmt.Fprintf(writer, "├─ Built: %s\n", formatted)
 		} else {
-			_, _ = fmt.Fprintf(os.Stdout, "├─ Built: %s\n", info.Date)
+			_, _ = fmt.Fprintf(writer, "├─ Built: %s\n", info.Date)
 		}
 	}
 
 	if info.GoVersion != "" {
-		_, _ = fmt.Fprintf(os.Stdout, "├─ Go version: %s\n", info.GoVersion)
+		_, _ = fmt.Fprintf(writer, "├─ Go version: %s\n", info.GoVersion)
 	}
 
 	if info.Platform != "" {
-		_, _ = fmt.Fprintf(os.Stdout, "└─ Platform: %s\n", info.Platform)
+		_, _ = fmt.Fprintf(writer, "└─ Platform: %s\n", info.Platform)
 	}
 }
 
 // displayShort displays only the version number.
 // This is useful for scripts and automation that only need the version.
-func displayShort(info VersionInfo) {
-	_, _ = fmt.Fprintf(os.Stdout, "%s\n", info.Version)
+func displayShort(writer io.Writer, info VersionInfo) {
+	_, _ = fmt.Fprintf(writer, "%s\n", info.Version)
 }
 
 // displayVerbose displays all available version information.
 // It shows every field that has a value, providing complete information.
-func displayVerbose(info VersionInfo) {
-	_, _ = fmt.Fprintf(os.Stdout, "Version: %s\n", info.Version)
+func displayVerbose(writer io.Writer, info VersionInfo) {
+	_, _ = fmt.Fprintf(writer, "Version: %s\n", info.Version)
 
 	if info.Commit != "" {
-		_, _ = fmt.Fprintf(os.Stdout, "Commit: %s\n", info.Commit)
+		_, _ = fmt.Fprintf(writer, "Commit: %s\n", info.Commit)
 	}
 
 	if info.Date != "" {
 		t, err := time.Parse(time.RFC3339, info.Date)
 		if err == nil {
 			formatted := t.UTC().Format("January 2, 2006 at 3:04 PM UTC")
-			_, _ = fmt.Fprintf(os.Stdout, "Built: %s\n", formatted)
+			_, _ = fmt.Fprintf(writer, "Built: %s\n", formatted)
 		} else {
-			_, _ = fmt.Fprintf(os.Stdout, "Built: %s\n", info.Date)
+			_, _ = fmt.Fprintf(writer, "Built: %s\n", info.Date)
 		}
 	}
 
 	if info.GoVersion != "" {
-		_, _ = fmt.Fprintf(os.Stdout, "Go version: %s\n", info.GoVersion)
+		_, _ = fmt.Fprintf(writer, "Go version: %s\n", info.GoVersion)
 	}
 
 	if info.Platform != "" {
-		_, _ = fmt.Fprintf(os.Stdout, "Platform: %s\n", info.Platform)
+		_, _ = fmt.Fprintf(writer, "Platform: %s\n", info.Platform)
 	}
 }
 
@@ -370,8 +379,8 @@ func compareVersionParts(part1, part2 string) int {
 
 // displayJSON displays version information in JSON format.
 // This is useful for programmatic consumption and integration with other tools.
-func displayJSON(info VersionInfo) {
-	encoder := json.NewEncoder(os.Stdout)
+func displayJSON(writer io.Writer, info VersionInfo) {
+	encoder := json.NewEncoder(writer)
 	encoder.SetIndent("", "  ")
 
 	err := encoder.Encode(info)

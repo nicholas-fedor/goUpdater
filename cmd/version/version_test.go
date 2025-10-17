@@ -142,17 +142,14 @@ func TestVersionCmdExecutionDefault(t *testing.T) {
 
 	cmd := version.NewVersionCmd()
 
-	// Capture stdout
-	oldStdout := os.Stdout
+	// Capture output using command's output writer
 	reader, writer, _ := os.Pipe()
-	os.Stdout = writer
+	cmd.SetOut(writer)
 
 	// Execute command with default format
 	cmd.Run(cmd, []string{})
 
 	_ = writer.Close()
-
-	os.Stdout = oldStdout
 
 	buf := make([]byte, 1024)
 	n, _ := reader.Read(buf)
@@ -184,16 +181,13 @@ func TestVersionCmdExecutionShort(t *testing.T) {
 	// Set short flag
 	_ = cmd.Flags().Set("short", "true")
 
-	// Capture stdout
-	oldStdout := os.Stdout
+	// Capture output using command's output writer
 	reader, writer, _ := os.Pipe()
-	os.Stdout = writer
+	cmd.SetOut(writer)
 
 	cmd.Run(cmd, []string{})
 
 	_ = writer.Close()
-
-	os.Stdout = oldStdout
 
 	buf := make([]byte, 1024)
 	n, _ := reader.Read(buf)
@@ -219,16 +213,13 @@ func TestVersionCmdExecutionVerbose(t *testing.T) {
 	// Set verbose flag
 	_ = cmd.Flags().Set("verbose", "true")
 
-	// Capture stdout
-	oldStdout := os.Stdout
+	// Capture output using command's output writer
 	reader, writer, _ := os.Pipe()
-	os.Stdout = writer
+	cmd.SetOut(writer)
 
 	cmd.Run(cmd, []string{})
 
 	_ = writer.Close()
-
-	os.Stdout = oldStdout
 
 	buf := make([]byte, 1024)
 	n, _ := reader.Read(buf)
@@ -260,16 +251,13 @@ func TestVersionCmdExecutionJSON(t *testing.T) {
 	// Set json flag
 	_ = cmd.Flags().Set("json", "true")
 
-	// Capture stdout
-	oldStdout := os.Stdout
+	// Capture output using command's output writer
 	reader, writer, _ := os.Pipe()
-	os.Stdout = writer
+	cmd.SetOut(writer)
 
 	cmd.Run(cmd, []string{})
 
 	_ = writer.Close()
-
-	os.Stdout = oldStdout
 
 	buf := make([]byte, 1024)
 	n, _ := reader.Read(buf)
@@ -300,16 +288,13 @@ func TestVersionCmdExecutionFormatFlag(t *testing.T) {
 	// Set format flag to short
 	_ = cmd.Flags().Set("format", "short")
 
-	// Capture stdout
-	oldStdout := os.Stdout
+	// Capture output using command's output writer
 	reader, writer, _ := os.Pipe()
-	os.Stdout = writer
+	cmd.SetOut(writer)
 
 	cmd.Run(cmd, []string{})
 
 	_ = writer.Close()
-
-	os.Stdout = oldStdout
 
 	buf := make([]byte, 1024)
 	n, _ := reader.Read(buf)
@@ -332,16 +317,13 @@ func TestVersionCmdFlagPrecedence(t *testing.T) {
 	_ = cmd.Flags().Set("format", "verbose")
 	_ = cmd.Flags().Set("json", "true")
 
-	// Capture stdout
-	oldStdout := os.Stdout
+	// Capture output using command's output writer
 	reader, writer, _ := os.Pipe()
-	os.Stdout = writer
+	cmd.SetOut(writer)
 
 	cmd.Run(cmd, []string{})
 
 	_ = writer.Close()
-
-	os.Stdout = oldStdout
 
 	buf := make([]byte, 1024)
 	n, _ := reader.Read(buf)
@@ -368,16 +350,13 @@ func TestVersionCmdInvalidFormat(t *testing.T) {
 	// Set invalid format - should default to default format
 	_ = cmd.Flags().Set("format", "invalid")
 
-	// Capture stdout
-	oldStdout := os.Stdout
+	// Capture output using command's output writer
 	reader, writer, _ := os.Pipe()
-	os.Stdout = writer
+	cmd.SetOut(writer)
 
 	cmd.Run(cmd, []string{})
 
 	_ = writer.Close()
-
-	os.Stdout = oldStdout
 
 	buf := make([]byte, 1024)
 	n, _ := reader.Read(buf)
@@ -396,16 +375,13 @@ func TestVersionCmdMinimalInfo(t *testing.T) {
 
 	cmd := version.NewVersionCmd()
 
-	// Capture stdout
-	oldStdout := os.Stdout
+	// Capture output using command's output writer
 	reader, writer, _ := os.Pipe()
-	os.Stdout = writer
+	cmd.SetOut(writer)
 
 	cmd.Run(cmd, []string{})
 
 	_ = writer.Close()
-
-	os.Stdout = oldStdout
 
 	buf := make([]byte, 1024)
 	n, _ := reader.Read(buf)
@@ -424,16 +400,13 @@ func TestVersionCmdEmptyVersion(t *testing.T) {
 
 	cmd := version.NewVersionCmd()
 
-	// Capture stdout
-	oldStdout := os.Stdout
+	// Capture output using command's output writer
 	reader, writer, _ := os.Pipe()
-	os.Stdout = writer
+	cmd.SetOut(writer)
 
 	cmd.Run(cmd, []string{})
 
 	_ = writer.Close()
-
-	os.Stdout = oldStdout
 
 	buf := make([]byte, 1024)
 	n, _ := reader.Read(buf)
