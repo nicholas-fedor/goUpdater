@@ -4,7 +4,7 @@
 # Variables
 BINARY_NAME=goUpdater
 GO=go
-DOCKER=docker
+MOCKERY=mockery
 GORELEASER=goreleaser
 GOLANGCI_LINT=golangci-lint-v2
 
@@ -19,13 +19,16 @@ help: ## Show this help message
 # Development Targets
 # =============================================================================
 
-.PHONY: build test lint run setup install
+.PHONY: build mocks test lint run setup install
 
 build: ## Build the application binary
-	$(GO) build -ldflags "-X github.com/nicholas-fedor/goUpdater/internal/version.goVersion=$$(go version | cut -d' ' -f3) -X github.com/nicholas-fedor/goUpdater/internal/version.platform=$$(go env GOOS)/$$(go env GOARCH)" -o bin/$(BINARY_NAME) .
+	$(GO) build -ldflags "-X github.com/nicholas-fedor/goUpdater/internal/version.version=dev -X github.com/nicholas-fedor/goUpdater/internal/version.commit=$$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown') -X github.com/nicholas-fedor/goUpdater/internal/version.date=$$(date -u +'%Y-%m-%dT%H:%M:%SZ') -X github.com/nicholas-fedor/goUpdater/internal/version.goVersion=$$(go version | cut -d' ' -f3) -X github.com/nicholas-fedor/goUpdater/internal/version.platform=$$(go env GOOS)/$$(go env GOARCH)" -o bin/$(BINARY_NAME) .
+
+mocks: ## Generate mock files for testing
+	$(MOCKERY) --config build/mockery/mockery.yaml
 
 test: ## Run all tests
-	$(GO) test -v -coverprofile coverage.out -covermode atomic ./...
+	$(GO) clean -testcache && $(GO) test -v -timeout 30s -coverprofile coverage.out -covermode atomic ./...
 
 lint: ## Run linter and fix issues
 	$(GOLANGCI_LINT) run --fix --config build/golangci-lint/golangci-lint.yaml ./...

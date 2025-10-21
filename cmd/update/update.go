@@ -6,9 +6,9 @@
 package update
 
 import (
-	"os"
+	"errors"
+	"fmt"
 
-	"github.com/nicholas-fedor/goUpdater/internal/logger"
 	"github.com/nicholas-fedor/goUpdater/internal/update"
 	"github.com/spf13/cobra"
 )
@@ -20,55 +20,24 @@ func NewUpdateCmd() *cobra.Command {
 		Short: "Update Go to the latest version",
 		Long: `Update Go by downloading the latest version, uninstalling the current installation,
 installing the new version, and verifying the installation. By default, Go is updated in /usr/local/go.`,
-		Aliases:                nil,
-		SuggestFor:             nil,
-		GroupID:                "",
-		Example:                "",
-		ValidArgs:              nil,
-		ValidArgsFunction:      nil,
-		Args:                   nil,
-		ArgAliases:             nil,
-		BashCompletionFunction: "",
-		Deprecated:             "",
-		Annotations:            nil,
-		Version:                "",
-		PersistentPreRun:       nil,
-		PersistentPreRunE:      nil,
-		PreRun:                 nil,
-		PreRunE:                nil,
-		Run: func(cmd *cobra.Command, _ []string) {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			updateDir, _ := cmd.Flags().GetString("install-dir")
 			autoInstall, _ := cmd.Flags().GetBool("auto-install")
-			logger.Debugf("Starting update operation: installDir=%s, autoInstall=%t", updateDir, autoInstall)
 
-			err := update.GoWithPrivileges(updateDir, autoInstall)
+			err := update.RunUpdate(updateDir, autoInstall)
 			if err != nil {
-				logger.Errorf("Error updating Go: %v", err)
-				os.Exit(1)
+				if errors.Is(err, update.ErrGoNotInstalled) {
+					//nolint:forbidigo // required for stdout output when Go is not installed
+					fmt.Println("Go is not installed. Use the --auto-install flag to install it automatically.")
+
+					return nil
+				}
+
+				return fmt.Errorf("update failed: %w", err)
 			}
+
+			return nil
 		},
-		RunE:               nil,
-		PostRun:            nil,
-		PostRunE:           nil,
-		PersistentPostRun:  nil,
-		PersistentPostRunE: nil,
-		FParseErrWhitelist: cobra.FParseErrWhitelist{UnknownFlags: false},
-		CompletionOptions: cobra.CompletionOptions{
-			DisableDefaultCmd:         false,
-			DisableNoDescFlag:         false,
-			DisableDescriptions:       false,
-			HiddenDefaultCmd:          false,
-			DefaultShellCompDirective: nil,
-		},
-		TraverseChildren:           false,
-		Hidden:                     false,
-		SilenceErrors:              false,
-		SilenceUsage:               false,
-		DisableFlagParsing:         false,
-		DisableAutoGenTag:          false,
-		DisableFlagsInUseLine:      false,
-		DisableSuggestions:         false,
-		SuggestionsMinimumDistance: 0,
 	}
 	cmd.Flags().StringP("install-dir", "d", "/usr/local/go", "Directory where Go should be updated")
 	cmd.Flags().BoolP("auto-install", "a", false, "Automatically install Go if not present")

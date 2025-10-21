@@ -5,177 +5,534 @@ package update
 
 import (
 	"errors"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
+	"github.com/nicholas-fedor/goUpdater/internal/download"
+	mockFilesystem "github.com/nicholas-fedor/goUpdater/internal/filesystem/mocks"
+	mockUninstall "github.com/nicholas-fedor/goUpdater/internal/uninstall/mocks"
+	mockUpdate "github.com/nicholas-fedor/goUpdater/internal/update/mocks"
 )
 
-func TestGo(t *testing.T) {
+// Static test errors to satisfy err113 linter rule.
+var (
+	errExitStatus1Test        = errors.New("exit status 1")
+	errNetworkTimeoutTest     = errors.New("network timeout")
+	errPermissionDeniedTest   = errors.New("permission denied")
+	errExtractionFailedTest   = errors.New("extraction failed")
+	errVerificationFailedTest = errors.New("verification failed")
+	errUninstallFailedTest    = errors.New("uninstall failed")
+	errElevationFailedTest    = errors.New("elevation failed")
+)
+
+// testUpdaterDeps holds all mocked dependencies for testing.
+type testUpdaterDeps struct {
+	updater         *Updater
+	mockFS          *mockFilesystem.MockFileSystem
+	mockCE          *mockUpdate.MockCommandExecutor
+	mockVF          *mockUpdate.MockVersionFetcher
+	mockAD          *mockUpdate.MockArchiveDownloader
+	mockInstaller   *mockUpdate.MockInstaller
+	mockUninstaller *mockUninstall.MockUninstaller
+	mockVerifier    *mockUpdate.MockVerifier
+	mockPM          *mockUpdate.MockPrivilegeManager
+}
+
+// newTestUpdater creates a new Updater with mocked dependencies for testing.
+//
+//nolint:thelper
+func newTestUpdater(t *testing.T) *testUpdaterDeps {
+	mockFS := mockFilesystem.NewMockFileSystem(t)
+	mockCE := mockUpdate.NewMockCommandExecutor(t)
+	mockVF := mockUpdate.NewMockVersionFetcher(t)
+	mockAD := mockUpdate.NewMockArchiveDownloader(t)
+	mockInstaller := mockUpdate.NewMockInstaller(t)
+	mockUninstaller := mockUninstall.NewMockUninstaller(t)
+	mockVerifier := mockUpdate.NewMockVerifier(t)
+	mockPM := mockUpdate.NewMockPrivilegeManager(t)
+	updater := &Updater{
+		fileSystem:        mockFS,
+		commandExecutor:   mockCE,
+		versionFetcher:    mockVF,
+		archiveDownloader: mockAD,
+		installer:         mockInstaller,
+		uninstaller:       mockUninstaller,
+		verifier:          mockVerifier,
+		privilegeManager:  mockPM,
+	}
+
+	return &testUpdaterDeps{
+		updater:         updater,
+		mockFS:          mockFS,
+		mockCE:          mockCE,
+		mockVF:          mockVF,
+		mockAD:          mockAD,
+		mockInstaller:   mockInstaller,
+		mockUninstaller: mockUninstaller,
+		mockVerifier:    mockVerifier,
+		mockPM:          mockPM,
+	}
+}
+
+// TestUpdateSuccessfulUpdate tests successful update when Go is installed and needs update.
+func TestUpdateSuccessfulUpdate(t *testing.T) {
 	t.Parallel()
+	deps := newTestUpdater(t)
+	updater := deps.updater
+	mockFS := deps.mockFS
+	mockCE := deps.mockCE
+	mockVF := deps.mockVF
+	mockAD := deps.mockAD
+	mockInstaller := deps.mockInstaller
+	mockUninstaller := deps.mockUninstaller
+	mockVerifier := deps.mockVerifier
 
-	testCases := []struct {
-		name        string
-		installDir  string
-		autoInstall bool
-		setup       func(t *testing.T) string
-		wantErr     bool
-		cleanup     func(t *testing.T, installDir string)
-	}{
-		{
-			name:        "success - update existing installation",
-			installDir:  "",
-			autoInstall: false,
-			setup:       setupGoSuccessTest,
-			wantErr:     false,
-			cleanup:     cleanupGoTest,
-		},
-		{
-			name:        "success - auto install when not present",
-			installDir:  "",
-			autoInstall: true,
-			setup:       setupGoAutoInstallTest,
-			wantErr:     false,
-			cleanup:     cleanupGoTest,
-		},
-		{
-			name:        "error - go not installed and auto install disabled",
-			installDir:  "",
-			autoInstall: false,
-			setup:       setupGoNotInstalledTest,
-			wantErr:     true,
-			cleanup:     cleanupGoTest,
-		},
-		{
-			name:        "error - latest version fetch fails",
-			installDir:  "",
-			autoInstall: false,
-			setup:       setupGoVersionFetchErrorTest,
-			wantErr:     false, // Test succeeds because version fetch works
-			cleanup:     cleanupGoTest,
-		},
-		{
-			name:        "no update needed - already latest",
-			installDir:  "",
-			autoInstall: false,
-			setup:       setupGoNoUpdateNeededTest,
-			wantErr:     false,
-			cleanup:     cleanupGoTest,
-		},
-	}
+	// Mock checkInstallation - Go is installed
+	mockCE.EXPECT().CommandContext(mock.Anything, "/usr/local/go/bin/go", []string{"version"}).Return(&mockExecCmd{
+		output: []byte("go version go1.20.0 linux/amd64"),
+		err:    nil,
+		path:   "/usr/local/go/bin/go",
+		args:   []string{"version"},
+	})
 
-	runGoTests(t, testCases)
+	// Mock version fetcher
+	versionInfo := &download.GoVersionInfo{Version: "go1.21.0"}
+	mockVF.EXPECT().GetLatestVersionInfo().Return(versionInfo, nil)
+
+	// Mock filesystem operations for downloadLatest
+	mockFS.EXPECT().MkdirTemp("", "goUpdater-*").Return("/tmp/goUpdater-123", nil)
+	mockFS.EXPECT().RemoveAll("/tmp/goUpdater-123").Return(nil)
+
+	// Mock archive downloader
+	mockAD.EXPECT().GetLatest("/tmp/goUpdater-123").Return("/tmp/goUpdater-123/go1.21.0.tar.gz", "/tmp/goUpdater-123", nil)
+
+	// Mock privilege manager
+	mockPM := deps.mockPM
+	mockPM.EXPECT().ElevateAndExecute(mock.Anything).RunAndReturn(
+		func(fn func() error) error {
+			return fn()
+		},
+	)
+
+	// Mock uninstaller
+	mockUninstaller.EXPECT().Remove("/usr/local/go").Return(nil)
+
+	// Mock installer
+	mockInstaller.EXPECT().Extract(mock.Anything, "/usr/local/go", "go1.20.0").Return(nil)
+
+	// Mock verifier
+	mockVerifier.EXPECT().Installation("/usr/local/go", "go1.21.0").Return(nil)
+
+	err := updater.Update("/usr/local/go", false)
+
+	require.NoError(t, err)
 }
 
-func runGoTests(t *testing.T, testCases []struct {
-	name        string
-	installDir  string
-	autoInstall bool
-	setup       func(t *testing.T) string
-	wantErr     bool
-	cleanup     func(t *testing.T, installDir string)
-}) {
-	t.Helper()
+// TestUpdateNoUpdateNeeded tests no update needed when versions match.
+func TestUpdateNoUpdateNeeded(t *testing.T) {
+	t.Parallel()
+	deps := newTestUpdater(t)
+	updater := deps.updater
+	mockCE := deps.mockCE
+	mockVF := deps.mockVF
 
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			t.Parallel()
+	// Mock checkInstallation - Go is installed with latest version
+	mockCE.EXPECT().CommandContext(mock.Anything, "/usr/local/go/bin/go", []string{"version"}).Return(&mockExecCmd{
+		output: []byte("go version go1.21.0 linux/amd64"),
+		err:    nil,
+		path:   "/usr/local/go/bin/go",
+		args:   []string{"version"},
+	})
 
-			installDir := testCase.setup(t)
-			if testCase.installDir != "" {
-				installDir = testCase.installDir
-			}
+	// Mock version fetcher
+	versionInfo := &download.GoVersionInfo{Version: "go1.21.0"}
+	mockVF.EXPECT().GetLatestVersionInfo().Return(versionInfo, nil)
 
-			err := Go(installDir, testCase.autoInstall)
-			if (err != nil) != testCase.wantErr {
-				t.Errorf("Go() error = %v, wantErr %v", err, testCase.wantErr)
-			}
+	err := updater.Update("/usr/local/go", false)
 
-			if testCase.cleanup != nil {
-				testCase.cleanup(t, installDir)
-			}
-		})
-	}
+	require.NoError(t, err)
 }
 
-// isRunningInContainer detects if the test is running in a container environment.
-// It checks for common container indicators like /.dockerenv file, cgroup entries,
-// environment variables, or the "no new privileges" flag.
-func isRunningInContainer() bool {
-	// Check for Docker container marker
-	_, err := os.Stat("/.dockerenv")
-	if err == nil {
-		return true
-	}
+// TestUpdateAutoInstall tests auto install when Go not installed.
+func TestUpdateAutoInstall(t *testing.T) {
+	t.Parallel()
+	deps := newTestUpdater(t)
+	updater := deps.updater
+	mockFS := deps.mockFS
+	mockCE := deps.mockCE
+	mockVF := deps.mockVF
+	mockAD := deps.mockAD
+	mockInstaller := deps.mockInstaller
+	mockVerifier := deps.mockVerifier
 
-	// Check cgroup for container runtime indicators
-	data, err := os.ReadFile("/proc/1/cgroup")
-	if err == nil {
-		content := string(data)
+	// Mock checkInstallation - Go not installed
+	mockCE.EXPECT().CommandContext(mock.Anything, "/usr/local/go/bin/go", []string{"version"}).Return(&mockExecCmd{
+		output: nil,
+		err:    errExitStatus1Test,
+		path:   "/usr/local/go/bin/go",
+		args:   []string{"version"},
+	})
 
-		containerIndicators := []string{"docker", "containerd", "lxc", "podman", "k8s", "container"}
-		for _, indicator := range containerIndicators {
-			if strings.Contains(content, indicator) {
-				return true
-			}
-		}
-	}
+	// Mock version fetcher
+	versionInfo := &download.GoVersionInfo{Version: "go1.21.0"}
+	mockVF.EXPECT().GetLatestVersionInfo().Return(versionInfo, nil)
 
-	// Check for container environment variables
-	containerEnvVars := []string{"CONTAINER", "DOCKER_CONTAINER", "KUBERNETES_SERVICE_HOST"}
-	for _, envVar := range containerEnvVars {
-		if os.Getenv(envVar) != "" {
-			return true
-		}
-	}
+	// Mock filesystem operations for downloadLatest
+	mockFS.EXPECT().MkdirTemp("", "goUpdater-*").Return("/tmp/goUpdater-123", nil)
+	mockFS.EXPECT().RemoveAll("/tmp/goUpdater-123").Return(nil)
 
-	// Check if we're running in a restricted environment (no new privileges)
-	// This is a common indicator of containerized execution
-	data, err = os.ReadFile("/proc/self/status")
-	if err == nil {
-		content := string(data)
-		if strings.Contains(content, "NoNewPrivs:\t1") {
-			return true
-		}
-	}
+	// Mock archive downloader
+	mockAD.EXPECT().GetLatest("/tmp/goUpdater-123").Return("/tmp/goUpdater-123/go1.21.0.tar.gz", "/tmp/goUpdater-123", nil)
 
-	return false
+	// Mock installer (no uninstall needed for fresh install)
+	mockInstaller.EXPECT().Extract(mock.Anything, "/usr/local/go", "").Return(nil)
+
+	// Mock verifier
+	mockVerifier.EXPECT().Installation("/usr/local/go", "go1.21.0").Return(nil)
+
+	err := updater.Update("/usr/local/go", true)
+
+	require.NoError(t, err)
 }
 
-// isSudoAvailable checks if the sudo command is available on the system.
-func isSudoAvailable() bool {
-	_, err := exec.LookPath("sudo")
+// TestUpdateGoNotInstalledNoAutoInstall tests error when Go not installed and autoInstall false.
+func TestUpdateGoNotInstalledNoAutoInstall(t *testing.T) {
+	t.Parallel()
+	deps := newTestUpdater(t)
+	updater := deps.updater
+	mockCE := deps.mockCE
 
-	return err == nil
+	// Mock checkInstallation - Go not installed
+	mockCE.EXPECT().CommandContext(mock.Anything, "/usr/local/go/bin/go", []string{"version"}).Return(&mockExecCmd{
+		output: nil,
+		err:    errExitStatus1Test,
+		path:   "/usr/local/go/bin/go",
+		args:   []string{"version"},
+	})
+
+	err := updater.Update("/usr/local/go", false)
+
+	require.Error(t, err)
+	require.Equal(t, ErrGoNotInstalled, err)
 }
 
-func TestGoWithPrivileges(t *testing.T) {
+// TestUpdateNetworkFailure tests network failure during version fetch.
+func TestUpdateNetworkFailure(t *testing.T) {
+	t.Parallel()
+	deps := newTestUpdater(t)
+	updater := deps.updater
+	mockCE := deps.mockCE
+	mockVF := deps.mockVF
+
+	// Mock checkInstallation - Go is installed
+	mockCE.EXPECT().CommandContext(mock.Anything, "/usr/local/go/bin/go", []string{"version"}).Return(&mockExecCmd{
+		output: []byte("go version go1.20.0 linux/amd64"),
+		err:    nil,
+		path:   "/usr/local/go/bin/go",
+		args:   []string{"version"},
+	})
+
+	// Mock version fetcher failure
+	mockVF.EXPECT().GetLatestVersionInfo().Return(nil, errNetworkTimeoutTest)
+
+	err := updater.Update("/usr/local/go", false)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "fetch_version")
+}
+
+// TestUpdateUninstallPermissionDenied tests permission denied during uninstall.
+func TestUpdateUninstallPermissionDenied(t *testing.T) {
+	t.Parallel()
+	deps := newTestUpdater(t)
+	updater := deps.updater
+	mockFS := deps.mockFS
+	mockCE := deps.mockCE
+	mockVF := deps.mockVF
+	mockAD := deps.mockAD
+	mockPM := deps.mockPM
+
+	// Mock checkInstallation - Go is installed
+	mockCE.EXPECT().CommandContext(mock.Anything, "/usr/local/go/bin/go", []string{"version"}).Return(&mockExecCmd{
+		output: []byte("go version go1.20.0 linux/amd64"),
+		err:    nil,
+		path:   "/usr/local/go/bin/go",
+		args:   []string{"version"},
+	})
+
+	// Mock version fetcher
+	versionInfo := &download.GoVersionInfo{Version: "go1.21.0"}
+	mockVF.EXPECT().GetLatestVersionInfo().Return(versionInfo, nil)
+
+	// Mock filesystem operations for downloadLatest
+	mockFS.EXPECT().MkdirTemp("", "goUpdater-*").Return("/tmp/goUpdater-123", nil)
+	mockFS.EXPECT().RemoveAll("/tmp/goUpdater-123").Return(nil)
+
+	// Mock archive downloader
+	mockAD.EXPECT().GetLatest("/tmp/goUpdater-123").Return("/tmp/goUpdater-123/go1.21.0.tar.gz", "/tmp/goUpdater-123", nil)
+
+	// Mock privilege manager
+	mockPM.EXPECT().ElevateAndExecute(mock.Anything).Return(errPermissionDeniedTest)
+
+	err := updater.Update("/usr/local/go", false)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "remove_existing")
+}
+
+// TestUpdateInstallationFailure tests installation failure.
+func TestUpdateInstallationFailure(t *testing.T) {
+	t.Parallel()
+	deps := newTestUpdater(t)
+	updater := deps.updater
+	mockFS := deps.mockFS
+	mockCE := deps.mockCE
+	mockVF := deps.mockVF
+	mockAD := deps.mockAD
+	mockInstaller := deps.mockInstaller
+	mockUninstaller := deps.mockUninstaller
+	mockPM := deps.mockPM
+
+	// Mock checkInstallation - Go is installed
+	mockCE.EXPECT().CommandContext(mock.Anything, "/usr/local/go/bin/go", []string{"version"}).Return(&mockExecCmd{
+		output: []byte("go version go1.20.0 linux/amd64"),
+		err:    nil,
+		path:   "/usr/local/go/bin/go",
+		args:   []string{"version"},
+	})
+
+	// Mock version fetcher
+	versionInfo := &download.GoVersionInfo{Version: "go1.21.0"}
+	mockVF.EXPECT().GetLatestVersionInfo().Return(versionInfo, nil)
+
+	// Mock filesystem operations for downloadLatest
+	mockFS.EXPECT().MkdirTemp("", "goUpdater-*").Return("/tmp/goUpdater-123", nil)
+	mockFS.EXPECT().RemoveAll("/tmp/goUpdater-123").Return(nil)
+
+	// Mock archive downloader
+	mockAD.EXPECT().GetLatest("/tmp/goUpdater-123").Return("/tmp/goUpdater-123/go1.21.0.tar.gz", "/tmp/goUpdater-123", nil)
+
+	// Mock privilege manager
+	mockPM.EXPECT().ElevateAndExecute(mock.Anything).RunAndReturn(
+		func(fn func() error) error {
+			return fn()
+		},
+	)
+
+	// Mock uninstaller
+	mockUninstaller.EXPECT().Remove("/usr/local/go").Return(nil)
+
+	// Mock installer failure
+	mockInstaller.EXPECT().Extract(mock.Anything, "/usr/local/go", "go1.20.0").Return(errExtractionFailedTest)
+
+	err := updater.Update("/usr/local/go", false)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "extract_archive")
+}
+
+// TestUpdateVerificationFailure tests verification failure.
+func TestUpdateVerificationFailure(t *testing.T) {
+	t.Parallel()
+	deps := newTestUpdater(t)
+	updater := deps.updater
+	mockFS := deps.mockFS
+	mockCE := deps.mockCE
+	mockVF := deps.mockVF
+	mockAD := deps.mockAD
+	mockInstaller := deps.mockInstaller
+	mockUninstaller := deps.mockUninstaller
+	mockVerifier := deps.mockVerifier
+	mockPM := deps.mockPM
+
+	// Mock checkInstallation - Go is installed
+	mockCE.EXPECT().CommandContext(mock.Anything, "/usr/local/go/bin/go", []string{"version"}).Return(&mockExecCmd{
+		output: []byte("go version go1.20.0 linux/amd64"),
+		err:    nil,
+		path:   "/usr/local/go/bin/go",
+		args:   []string{"version"},
+	})
+
+	// Mock version fetcher
+	versionInfo := &download.GoVersionInfo{Version: "go1.21.0"}
+	mockVF.EXPECT().GetLatestVersionInfo().Return(versionInfo, nil)
+
+	// Mock filesystem operations for downloadLatest
+	mockFS.EXPECT().MkdirTemp("", "goUpdater-*").Return("/tmp/goUpdater-123", nil)
+	mockFS.EXPECT().RemoveAll("/tmp/goUpdater-123").Return(nil)
+
+	// Mock archive downloader
+	mockAD.EXPECT().GetLatest("/tmp/goUpdater-123").Return("/tmp/goUpdater-123/go1.21.0.tar.gz", "/tmp/goUpdater-123", nil)
+
+	// Mock privilege manager
+	mockPM.EXPECT().ElevateAndExecute(mock.Anything).RunAndReturn(
+		func(fn func() error) error {
+			return fn()
+		},
+	)
+
+	// Mock uninstaller
+	mockUninstaller.EXPECT().Remove("/usr/local/go").Return(nil)
+
+	// Mock installer
+	mockInstaller.EXPECT().Extract(mock.Anything, "/usr/local/go", "go1.20.0").Return(nil)
+
+	// Mock verifier failure
+	mockVerifier.EXPECT().Installation("/usr/local/go", "go1.21.0").Return(errVerificationFailedTest)
+
+	err := updater.Update("/usr/local/go", false)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "check_installation")
+}
+
+// TestUpdateInvalidVersionFormat tests invalid version format.
+func TestUpdateInvalidVersionFormat(t *testing.T) {
+	t.Parallel()
+	deps := newTestUpdater(t)
+	updater := deps.updater
+	mockCE := deps.mockCE
+
+	// Mock checkInstallation - invalid version output
+	mockCE.EXPECT().CommandContext(mock.Anything, "/usr/local/go/bin/go", []string{"version"}).Return(&mockExecCmd{
+		output: []byte("go version invalid linux/amd64"),
+		err:    nil,
+		path:   "/usr/local/go/bin/go",
+		args:   []string{"version"},
+	})
+
+	err := updater.Update("/usr/local/go", false)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unable to parse version")
+}
+
+// TestUpdateEmptyInstallDirectory tests empty install directory.
+func TestUpdateEmptyInstallDirectory(t *testing.T) {
+	t.Parallel()
+	deps := newTestUpdater(t)
+	updater := deps.updater
+	mockCE := deps.mockCE
+
+	// Empty install dir should cause issues in checkInstallation
+	mockCE.EXPECT().CommandContext(mock.Anything, "bin/go", []string{"version"}).Return(&mockExecCmd{
+		output: nil,
+		err:    errExitStatus1Test,
+		path:   "bin/go",
+		args:   []string{"version"},
+	})
+
+	err := updater.Update("", false)
+
+	require.Error(t, err)
+	require.Equal(t, ErrGoNotInstalled, err)
+}
+
+// TestNeedsUpdate tests the needsUpdate function with comprehensive version comparison scenarios.
+func TestNeedsUpdate(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name        string
-		installDir  string
-		autoInstall bool
-		setup       func(t *testing.T) string
-		wantErr     bool
-		cleanup     func(t *testing.T, installDir string)
+		name             string
+		installedVersion string
+		latestVersion    string
+		expected         bool
+		expectError      bool
 	}{
 		{
-			name:        "success",
-			installDir:  "",
-			autoInstall: false,
-			setup:       setupGoSuccessTest,
-			wantErr:     false,
-			cleanup:     cleanupGoTest,
+			name:             "no installed version requires update",
+			installedVersion: "",
+			latestVersion:    "v1.21.0",
+			expected:         true,
 		},
 		{
-			name:        "error - privileges elevation fails",
-			installDir:  "",
-			autoInstall: false,
-			setup:       setupGoPrivilegesErrorTest,
-			wantErr:     false, // Test runs as root, so elevation succeeds
-			cleanup:     cleanupGoTest,
+			name:             "installed version older than latest",
+			installedVersion: "go1.20.0",
+			latestVersion:    "v1.21.0",
+			expected:         true,
+		},
+		{
+			name:             "installed version same as latest",
+			installedVersion: "go1.21.0",
+			latestVersion:    "v1.21.0",
+			expected:         false,
+		},
+		{
+			name:             "installed version newer than latest",
+			installedVersion: "go1.22.0",
+			latestVersion:    "v1.21.0",
+			expected:         false,
+		},
+		{
+			name:             "version comparison with go prefix",
+			installedVersion: "go1.20.0",
+			latestVersion:    "v1.21.0",
+			expected:         true,
+		},
+		{
+			name:             "version comparison with v prefix",
+			installedVersion: "v1.20.0",
+			latestVersion:    "v1.21.0",
+			expected:         true,
+		},
+		{
+			name:             "patch version comparison",
+			installedVersion: "go1.21.0",
+			latestVersion:    "v1.21.1",
+			expected:         true,
+		},
+		{
+			name:             "complex version comparison",
+			installedVersion: "go1.21.5",
+			latestVersion:    "v1.21.10",
+			expected:         true,
+		},
+		{
+			name:             "invalid installed version",
+			installedVersion: "invalid",
+			latestVersion:    "v1.21.0",
+			expected:         false,
+			expectError:      true,
+		},
+		{
+			name:             "invalid latest version",
+			installedVersion: "go1.20.0",
+			latestVersion:    "invalid",
+			expected:         false,
+			expectError:      true,
+		},
+		{
+			name:             "empty latest version",
+			installedVersion: "go1.20.0",
+			latestVersion:    "",
+			expected:         false,
+			expectError:      true,
+		},
+		{
+			name:             "pre-release versions",
+			installedVersion: "go1.21.0",
+			latestVersion:    "v1.21.0-rc.1",
+			expected:         false,
+		},
+		{
+			name:             "build metadata comparison",
+			installedVersion: "go1.21.0+build.1",
+			latestVersion:    "v1.21.0+build.2",
+			expected:         false,
+		},
+		{
+			name:             "major version difference",
+			installedVersion: "go1.20.0",
+			latestVersion:    "v2.0.0",
+			expected:         true,
+		},
+		{
+			name:             "minor version difference",
+			installedVersion: "go1.20.0",
+			latestVersion:    "v1.22.0",
+			expected:         true,
 		},
 	}
 
@@ -183,342 +540,465 @@ func TestGoWithPrivileges(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Skip privilege escalation tests in container environments
-			inContainer := isRunningInContainer()
-			sudoAvail := isSudoAvailable()
-			t.Logf("isRunningInContainer: %t, isSudoAvailable: %t", inContainer, sudoAvail)
+			result := needsUpdate(testCase.installedVersion, testCase.latestVersion)
 
-			if inContainer || !sudoAvail {
-				t.Skip("Skipping privilege escalation test in container or without sudo")
-			}
-
-			installDir := testCase.setup(t)
-			if testCase.installDir != "" {
-				installDir = testCase.installDir
-			}
-
-			err := GoWithPrivileges(installDir, testCase.autoInstall)
-			if (err != nil) != testCase.wantErr {
-				t.Errorf("GoWithPrivileges() error = %v, wantErr %v", err, testCase.wantErr)
-			}
-
-			if testCase.cleanup != nil {
-				testCase.cleanup(t, installDir)
+			if testCase.expectError {
+				// In the current implementation, errors are logged but function returns false
+				require.False(t, result)
+			} else {
+				require.Equal(t, testCase.expected, result)
 			}
 		})
 	}
 }
 
-func TestNeedsUpdate(t *testing.T) {
+// TestUpdater_checkInstallation tests the checkInstallation method with various scenarios.
+func TestUpdater_checkInstallation(t *testing.T) {
 	t.Parallel()
 
-	// Test the needsUpdate logic through the public Go function
-	// Since needsUpdate is unexported, we test it indirectly
-
-	t.Run("no update when versions are equal", func(t *testing.T) {
-		t.Parallel()
-
-		tempDir := t.TempDir()
-		installDir := filepath.Join(tempDir, "go")
-
-		// Setup installation with version that matches latest (simulate)
-		binDir := filepath.Join(installDir, "bin")
-
-		err := os.MkdirAll(binDir, 0700)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// Create go binary that reports a very high version (newer than any real version) with executable permissions
-		goBinary := filepath.Join(binDir, "go")
-
-		err = os.WriteFile(goBinary, []byte("#!/bin/bash\necho 'go version go99.0.0 linux/amd64'"), 0755) // #nosec G306
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// This should not perform an update since installed version is newer
-		err = Go(installDir, false)
-		// We expect this to succeed (no error) because no update is needed
-		if err != nil {
-			t.Errorf("Expected no error when no update is needed, but got: %v", err)
-		}
-	})
-
-	t.Run("update when installed version is older", func(t *testing.T) {
-		t.Parallel()
-
-		tempDir := t.TempDir()
-		installDir := filepath.Join(tempDir, "go")
-
-		// Setup installation with old version
-		binDir := filepath.Join(installDir, "bin")
-
-		err := os.MkdirAll(binDir, 0700)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		goBinary := filepath.Join(binDir, "go")
-
-		err = os.WriteFile(goBinary, []byte("#!/bin/bash\necho 'go version go1.20.0 linux/amd64'"), 0755) // #nosec G306
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// This should attempt an update
-		err = Go(installDir, false)
-		// We expect this to fail at download step, but the fact that it tries to download
-		// means needsUpdate correctly returned true
-		// However, if an existing archive is found, it may succeed, so we check for either case
-		if err != nil && !strings.Contains(err.Error(), "download") && !strings.Contains(err.Error(), "checksum") {
-			t.Errorf("Expected error due to download or checksum verification, but got: %v", err)
-		}
-	})
-}
-
-// Helper functions for testing
-
-func setupGoSuccessTest(t *testing.T) string {
-	t.Helper()
-
-	// Create a temporary directory to simulate Go installation
-	tempDir := t.TempDir()
-	installDir := filepath.Join(tempDir, "go")
-
-	// Create a minimal Go installation structure
-	binDir := filepath.Join(installDir, "bin")
-
-	err := os.MkdirAll(binDir, 0700)
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name           string
+		installDir     string
+		autoInstall    bool
+		setupMocks     func(*mockUpdate.MockCommandExecutor)
+		expectedResult string
+		expectedError  bool
+		expectedErrMsg string
+	}{
+		{
+			name:        "successful installation check",
+			installDir:  "/usr/local/go",
+			autoInstall: false,
+			setupMocks: func(ce *mockUpdate.MockCommandExecutor) {
+				ce.EXPECT().CommandContext(mock.Anything, "/usr/local/go/bin/go", []string{"version"}).Return(&mockExecCmd{
+					output: []byte("go version go1.21.0 linux/amd64"),
+					err:    nil,
+					path:   "/usr/local/go/bin/go",
+					args:   []string{"version"},
+				})
+			},
+			expectedResult: "go1.21.0",
+			expectedError:  false,
+		},
+		{
+			name:        "Go not installed, autoInstall true",
+			installDir:  "/usr/local/go",
+			autoInstall: true,
+			setupMocks: func(ce *mockUpdate.MockCommandExecutor) {
+				ce.EXPECT().CommandContext(mock.Anything, "/usr/local/go/bin/go", []string{"version"}).Return(&mockExecCmd{
+					output: nil,
+					err:    errExitStatus1Test,
+					path:   "/usr/local/go/bin/go",
+					args:   []string{"version"},
+				})
+			},
+			expectedResult: "",
+			expectedError:  false,
+		},
+		{
+			name:        "Go not installed, autoInstall false",
+			installDir:  "/usr/local/go",
+			autoInstall: false,
+			setupMocks: func(ce *mockUpdate.MockCommandExecutor) {
+				ce.EXPECT().CommandContext(mock.Anything, "/usr/local/go/bin/go", []string{"version"}).Return(&mockExecCmd{
+					output: nil,
+					err:    errExitStatus1Test,
+					path:   "/usr/local/go/bin/go",
+					args:   []string{"version"},
+				})
+			},
+			expectedResult: "",
+			expectedError:  true,
+			expectedErrMsg: "go is not installed",
+		},
+		{
+			name:        "invalid version output format",
+			installDir:  "/usr/local/go",
+			autoInstall: false,
+			setupMocks: func(ce *mockUpdate.MockCommandExecutor) {
+				ce.EXPECT().CommandContext(mock.Anything, "/usr/local/go/bin/go", []string{"version"}).Return(&mockExecCmd{
+					output: []byte("invalid output format"),
+					err:    nil,
+					path:   "/usr/local/go/bin/go",
+					args:   []string{"version"},
+				})
+			},
+			expectedResult: "",
+			expectedError:  true,
+			expectedErrMsg: "unable to parse version from output: invalid output format",
+		},
+		{
+			name:        "invalid semver version",
+			installDir:  "/usr/local/go",
+			autoInstall: false,
+			setupMocks: func(ce *mockUpdate.MockCommandExecutor) {
+				ce.EXPECT().CommandContext(mock.Anything, "/usr/local/go/bin/go", []string{"version"}).Return(&mockExecCmd{
+					output: []byte("go version invalid-version linux/amd64"),
+					err:    nil,
+					path:   "/usr/local/go/bin/go",
+					args:   []string{"version"},
+				})
+			},
+			expectedResult: "",
+			expectedError:  true,
+			expectedErrMsg: "invalid version format: invalid-version",
+		},
+		{
+			name:        "command execution error",
+			installDir:  "/usr/local/go",
+			autoInstall: false,
+			setupMocks: func(ce *mockUpdate.MockCommandExecutor) {
+				ce.EXPECT().CommandContext(mock.Anything, "/usr/local/go/bin/go", []string{"version"}).Return(&mockExecCmd{
+					output: nil,
+					err:    errExitStatus1Test,
+					path:   "/usr/local/go/bin/go",
+					args:   []string{"version"},
+				})
+			},
+			expectedResult: "",
+			expectedError:  true,
+			expectedErrMsg: "go is not installed",
+		},
+		{
+			name:        "empty install directory",
+			installDir:  "",
+			autoInstall: false,
+			setupMocks: func(ce *mockUpdate.MockCommandExecutor) {
+				ce.EXPECT().CommandContext(mock.Anything, "bin/go", []string{"version"}).Return(&mockExecCmd{
+					output: nil,
+					err:    errExitStatus1Test,
+					path:   "bin/go",
+					args:   []string{"version"},
+				})
+			},
+			expectedResult: "",
+			expectedError:  true,
+			expectedErrMsg: "go is not installed",
+		},
 	}
 
-	// Create a fake go binary with executable permissions
-	goBinary := filepath.Join(binDir, "go")
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			mockCE := mockUpdate.NewMockCommandExecutor(t)
 
-	err = os.WriteFile(goBinary, []byte("#!/bin/bash\necho 'go version go1.20.0 linux/amd64'"), 0755) // #nosec G306
-	if err != nil {
-		t.Fatal(err)
-	}
+			if testCase.setupMocks != nil {
+				testCase.setupMocks(mockCE)
+			}
 
-	return installDir
-}
+			updater := &Updater{
+				commandExecutor: mockCE,
+			}
 
-func setupGoAutoInstallTest(t *testing.T) string {
-	t.Helper()
+			result, err := updater.checkInstallation(testCase.installDir, testCase.autoInstall)
 
-	// Return a non-existent directory to simulate no installation
-	tempDir := t.TempDir()
-	installDir := filepath.Join(tempDir, "go")
+			if testCase.expectedError {
+				require.Error(t, err)
 
-	return installDir
-}
-
-func setupGoNotInstalledTest(t *testing.T) string {
-	t.Helper()
-
-	// Return a non-existent directory
-	tempDir := t.TempDir()
-	installDir := filepath.Join(tempDir, "go")
-
-	return installDir
-}
-
-func setupGoVersionFetchErrorTest(t *testing.T) string {
-	t.Helper()
-
-	// This test is designed to fail at version fetch, but since we can't easily mock it,
-	// we'll use a setup that should succeed. The test expectation needs to be adjusted.
-	return setupGoSuccessTest(t)
-}
-
-func setupGoNoUpdateNeededTest(t *testing.T) string {
-	t.Helper()
-
-	// Create installation with latest version
-	tempDir := t.TempDir()
-	installDir := filepath.Join(tempDir, "go")
-
-	binDir := filepath.Join(installDir, "bin")
-
-	err := os.MkdirAll(binDir, 0700)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Create go binary that reports a very high version with executable permissions
-	goBinary := filepath.Join(binDir, "go")
-
-	err = os.WriteFile(goBinary, []byte("#!/bin/bash\necho 'go version go99.0.0 linux/amd64'"), 0755) // #nosec G306
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return installDir
-}
-
-func setupGoPrivilegesErrorTest(t *testing.T) string {
-	t.Helper()
-
-	// In container environments or without sudo, privilege escalation will fail.
-	// This setup simulates a scenario where privileges are needed but may fail.
-	// We use the same setup as success test since the actual privilege handling
-	// is tested in the privileges package.
-	return setupGoSuccessTest(t)
-}
-
-func cleanupGoTest(t *testing.T, installDir string) {
-	t.Helper()
-
-	// Cleanup is handled by t.TempDir(), but we can add additional cleanup if needed
-	_ = os.RemoveAll(filepath.Dir(installDir))
-}
-
-// TestErrGoNotInstalled verifies the exported error variable.
-func TestErrGoNotInstalled(t *testing.T) {
-	t.Parallel()
-
-	expectedMsg := "Go is not installed"
-	if ErrGoNotInstalled.Error() != expectedMsg {
-		t.Errorf("ErrGoNotInstalled.Error() = %v, want %v", ErrGoNotInstalled.Error(), expectedMsg)
+				if testCase.expectedErrMsg != "" {
+					require.Contains(t, err.Error(), testCase.expectedErrMsg)
+				}
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, testCase.expectedResult, result)
+			}
+		})
 	}
 }
 
-// TestCheckInstallation tests the checkInstallation function indirectly through Go.
-func TestCheckInstallation(t *testing.T) {
+// TestUpdater_downloadLatest tests the downloadLatest method.
+func TestUpdater_downloadLatest(t *testing.T) {
 	t.Parallel()
 
-	t.Run("auto install enabled when not installed", func(t *testing.T) {
-		t.Parallel()
+	tests := []struct {
+		name           string
+		setupMocks     func(*mockFilesystem.MockFileSystem, *mockUpdate.MockArchiveDownloader)
+		expectedError  bool
+		expectedErrMsg string
+	}{
+		{
+			name: "successful download",
+			setupMocks: func(fs *mockFilesystem.MockFileSystem, ad *mockUpdate.MockArchiveDownloader) {
+				fs.EXPECT().MkdirTemp("", "goUpdater-*").Return("/tmp/goUpdater-123", nil)
+				ad.EXPECT().GetLatest("/tmp/goUpdater-123").Return("/tmp/goUpdater-123/go.tar.gz", "/tmp/goUpdater-123", nil)
+			},
+			expectedError: false,
+		},
+		{
+			name: "temp directory creation fails",
+			setupMocks: func(fs *mockFilesystem.MockFileSystem, _ *mockUpdate.MockArchiveDownloader) {
+				fs.EXPECT().MkdirTemp("", "goUpdater-*").Return("", errPermissionDeniedTest)
+			},
+			expectedError:  true,
+			expectedErrMsg: "create_temp_dir",
+		},
+	}
 
-		tempDir := t.TempDir()
-		installDir := filepath.Join(tempDir, "go")
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			mockFS := mockFilesystem.NewMockFileSystem(t)
+			mockCE := mockUpdate.NewMockCommandExecutor(t)
+			mockVF := mockUpdate.NewMockVersionFetcher(t)
+			mockAD := mockUpdate.NewMockArchiveDownloader(t)
+			mockInstaller := mockUpdate.NewMockInstaller(t)
+			mockUninstaller := mockUninstall.NewMockUninstaller(t)
+			mockVerifier := mockUpdate.NewMockVerifier(t)
+			mockPM := mockUpdate.NewMockPrivilegeManager(t)
 
-		// This should not error because autoInstall is true
-		err := Go(installDir, true)
-		// We expect this to fail at download step, but if existing archive is found, it may succeed
-		if err != nil && !strings.Contains(err.Error(), "download") && !strings.Contains(err.Error(), "checksum") {
-			t.Errorf("Expected error due to download or checksum verification, but got: %v", err)
-		}
+			if testCase.setupMocks != nil {
+				testCase.setupMocks(mockFS, mockAD)
+			}
 
-		// Should not be ErrGoNotInstalled since autoInstall is true
-		if errors.Is(err, ErrGoNotInstalled) {
-			t.Errorf("Expected no ErrGoNotInstalled when autoInstall=true, got %v", err)
-		}
-	})
+			updater := &Updater{
+				fileSystem:        mockFS,
+				commandExecutor:   mockCE,
+				versionFetcher:    mockVF,
+				archiveDownloader: mockAD,
+				installer:         mockInstaller,
+				uninstaller:       mockUninstaller,
+				verifier:          mockVerifier,
+				privilegeManager:  mockPM,
+			}
 
-	t.Run("error when not installed and auto install disabled", func(t *testing.T) {
-		t.Parallel()
+			_, _, err := updater.downloadLatest()
 
-		tempDir := t.TempDir()
-		installDir := filepath.Join(tempDir, "go")
+			if testCase.expectedError {
+				require.Error(t, err)
 
-		err := Go(installDir, false)
-		if err == nil {
-			t.Error("Expected ErrGoNotInstalled, but got nil")
-		}
-
-		if !errors.Is(err, ErrGoNotInstalled) {
-			t.Errorf("Expected ErrGoNotInstalled, got %v", err)
-		}
-	})
+				if testCase.expectedErrMsg != "" {
+					require.Contains(t, err.Error(), testCase.expectedErrMsg)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
 
-// TestDownloadLatest tests the downloadLatest function indirectly.
-func TestDownloadLatest(t *testing.T) {
+// TestUpdater_performUpdate tests the performUpdate method.
+func TestUpdater_performUpdate(t *testing.T) {
 	t.Parallel()
 
-	// Since downloadLatest calls external services, we test through the main function
-	// In a real scenario, we'd mock the download package
-	t.Run("download latest integration", func(t *testing.T) {
-		t.Parallel()
+	tests := []struct {
+		name             string
+		archivePath      string
+		installDir       string
+		installedVersion string
+		setupMocks       func(*mockUpdate.MockInstaller, *mockUninstall.MockUninstaller, *mockUpdate.MockPrivilegeManager)
+		expectedError    bool
+		expectedErrMsg   string
+	}{
+		{
+			name:             "successful update with existing installation",
+			archivePath:      "/tmp/go1.21.0.tar.gz",
+			installDir:       "/usr/local/go",
+			installedVersion: "go1.20.0",
+			setupMocks: func(installer *mockUpdate.MockInstaller,
+				uninstaller *mockUninstall.MockUninstaller, privilegeManager *mockUpdate.MockPrivilegeManager) {
+				privilegeManager.EXPECT().ElevateAndExecute(mock.Anything).RunAndReturn(
+					func(fn func() error) error {
+						return fn()
+					},
+				)
+				uninstaller.EXPECT().Remove("/usr/local/go").Return(nil)
+				installer.EXPECT().Extract("/tmp/go1.21.0.tar.gz", "/usr/local/go", "go1.20.0").Return(nil)
+			},
+			expectedError: false,
+		},
+		{
+			name:             "successful fresh installation",
+			archivePath:      "/tmp/go1.21.0.tar.gz",
+			installDir:       "/usr/local/go",
+			installedVersion: "",
+			setupMocks: func(installer *mockUpdate.MockInstaller,
+				_ *mockUninstall.MockUninstaller, _ *mockUpdate.MockPrivilegeManager) {
+				installer.EXPECT().Extract("/tmp/go1.21.0.tar.gz", "/usr/local/go", "").Return(nil)
+			},
+			expectedError: false,
+		},
+		{
+			name:             "uninstall failure",
+			archivePath:      "/tmp/go1.21.0.tar.gz",
+			installDir:       "/usr/local/go",
+			installedVersion: "go1.20.0",
+			setupMocks: func(_ *mockUpdate.MockInstaller, uninstaller *mockUninstall.MockUninstaller,
+				privilegeManager *mockUpdate.MockPrivilegeManager) {
+				privilegeManager.EXPECT().ElevateAndExecute(mock.Anything).RunAndReturn(
+					func(fn func() error) error {
+						return fn()
+					},
+				)
+				uninstaller.EXPECT().Remove("/usr/local/go").Return(errUninstallFailedTest)
+			},
+			expectedError:  true,
+			expectedErrMsg: "remove_existing",
+		},
+		{
+			name:             "privilege elevation failure",
+			archivePath:      "/tmp/go1.21.0.tar.gz",
+			installDir:       "/usr/local/go",
+			installedVersion: "go1.20.0",
+			setupMocks: func(_ *mockUpdate.MockInstaller, _ *mockUninstall.MockUninstaller,
+				privilegeManager *mockUpdate.MockPrivilegeManager) {
+				privilegeManager.EXPECT().ElevateAndExecute(mock.Anything).Return(errElevationFailedTest)
+			},
+			expectedError:  true,
+			expectedErrMsg: "remove_existing",
+		},
+		{
+			name:             "installation failure",
+			archivePath:      "/tmp/go1.21.0.tar.gz",
+			installDir:       "/usr/local/go",
+			installedVersion: "",
+			setupMocks: func(installer *mockUpdate.MockInstaller, _ *mockUninstall.MockUninstaller,
+				_ *mockUpdate.MockPrivilegeManager) {
+				installer.EXPECT().Extract("/tmp/go1.21.0.tar.gz", "/usr/local/go", "").Return(errExtractionFailedTest)
+			},
+			expectedError:  true,
+			expectedErrMsg: "extract_archive",
+		},
+	}
 
-		tempDir := t.TempDir()
-		installDir := filepath.Join(tempDir, "go")
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			mockInstaller := mockUpdate.NewMockInstaller(t)
+			mockUninstaller := mockUninstall.NewMockUninstaller(t)
+			mockPM := mockUpdate.NewMockPrivilegeManager(t)
 
-		// Setup minimal installation
-		binDir := filepath.Join(installDir, "bin")
+			if testCase.setupMocks != nil {
+				testCase.setupMocks(mockInstaller, mockUninstaller, mockPM)
+			}
 
-		err := os.MkdirAll(binDir, 0700)
-		if err != nil {
-			t.Fatal(err)
-		}
+			updater := &Updater{
+				installer:        mockInstaller,
+				uninstaller:      mockUninstaller,
+				privilegeManager: mockPM,
+			}
 
-		goBinary := filepath.Join(binDir, "go")
+			err := updater.performUpdate(testCase.archivePath, testCase.installDir, testCase.installedVersion)
 
-		err = os.WriteFile(goBinary, []byte("#!/bin/bash\necho 'go version go1.20.0 linux/amd64'"), 0755) // #nosec G306
-		if err != nil {
-			t.Fatal(err)
-		}
+			if testCase.expectedError {
+				require.Error(t, err)
 
-		// This will attempt to download, which may fail in test environment
-		err = Go(installDir, false)
-		// We don't assert on the error since network calls may vary
-		_ = err
-	})
+				if testCase.expectedErrMsg != "" {
+					require.Contains(t, err.Error(), testCase.expectedErrMsg)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
 
-// TestPerformUpdate tests the performUpdate function indirectly.
-func TestPerformUpdate(t *testing.T) {
-	t.Parallel()
-
-	// Test through the main Go function
-	t.Run("perform update with existing installation", func(t *testing.T) {
-		t.Parallel()
-
-		tempDir := t.TempDir()
-		installDir := filepath.Join(tempDir, "go")
-
-		// Setup existing installation
-		binDir := filepath.Join(installDir, "bin")
-
-		err := os.MkdirAll(binDir, 0700)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		goBinary := filepath.Join(binDir, "go")
-
-		err = os.WriteFile(goBinary, []byte("#!/bin/bash\necho 'go version go1.20.0 linux/amd64'"), 0755) // #nosec G306
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// Attempt update
-		err = Go(installDir, false)
-		// Result depends on network/download availability
-		_ = err
-	})
+// mockExecCmd implements exec.ExecCommand interface for testing.
+type mockExecCmd struct {
+	output []byte
+	err    error
+	path   string
+	args   []string
 }
 
-// TestCheckAndPrepare tests the checkAndPrepare function indirectly.
-func TestCheckAndPrepare(t *testing.T) {
+func (m *mockExecCmd) Output() ([]byte, error) {
+	return m.output, m.err
+}
+
+func (m *mockExecCmd) Path() string {
+	return m.path
+}
+
+func (m *mockExecCmd) Args() []string {
+	return m.args
+}
+
+func TestCompare(t *testing.T) {
 	t.Parallel()
 
-	t.Run("check and prepare with existing installation", func(t *testing.T) {
-		t.Parallel()
+	tests := []struct {
+		name     string
+		version1 string
+		version2 string
+		expected int
+		wantErr  bool
+	}{
+		{
+			name:     "equal versions",
+			version1: "go1.21.0",
+			version2: "v1.21.0",
+			expected: 0,
+			wantErr:  false,
+		},
+		{
+			name:     "version1 less than version2",
+			version1: "go1.20.0",
+			version2: "v1.21.0",
+			expected: -1,
+			wantErr:  false,
+		},
+		{
+			name:     "version1 greater than version2",
+			version1: "go1.22.0",
+			version2: "v1.21.0",
+			expected: 1,
+			wantErr:  false,
+		},
+		{
+			name:     "patch version difference",
+			version1: "1.21.0",
+			version2: "1.21.1",
+			expected: -1,
+			wantErr:  false,
+		},
+		{
+			name:     "empty version1",
+			version1: "",
+			version2: "v1.21.0",
+			expected: 0,
+			wantErr:  true,
+		},
+		{
+			name:     "empty version2",
+			version1: "go1.21.0",
+			version2: "",
+			expected: 0,
+			wantErr:  true,
+		},
+		{
+			name:     "invalid version1",
+			version1: "invalid",
+			version2: "v1.21.0",
+			expected: 0,
+			wantErr:  true,
+		},
+		{
+			name:     "invalid version2",
+			version1: "go1.21.0",
+			version2: "invalid",
+			expected: 0,
+			wantErr:  true,
+		},
+		{
+			name:     "major version difference",
+			version1: "go2.0.0",
+			version2: "v1.21.0",
+			expected: 1,
+			wantErr:  false,
+		},
+	}
 
-		tempDir := t.TempDir()
-		installDir := filepath.Join(tempDir, "go")
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
 
-		// Setup installation
-		binDir := filepath.Join(installDir, "bin")
+			result, err := compare(testCase.version1, testCase.version2)
 
-		err := os.MkdirAll(binDir, 0700)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		goBinary := filepath.Join(binDir, "go")
-
-		err = os.WriteFile(goBinary, []byte("#!/bin/bash\necho 'go version go1.20.0 linux/amd64'"), 0755) // #nosec G306
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// Test through Go function
-		err = Go(installDir, false)
-		_ = err // May fail at download step
-	})
+			if testCase.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, testCase.expected, result)
+			}
+		})
+	}
 }

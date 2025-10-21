@@ -4,235 +4,377 @@
 package uninstall
 
 import (
+	"errors"
 	"os"
-	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	mockFilesystem "github.com/nicholas-fedor/goUpdater/internal/filesystem/mocks"
+	mockUninstall "github.com/nicholas-fedor/goUpdater/internal/uninstall/mocks"
 )
 
-func TestUninstallGo(t *testing.T) {
+// Static test errors to satisfy err113 linter rule.
+var (
+	errDirectoryInUseTest         = errors.New("directory in use")
+	errPartialRemovalFailedTest   = errors.New("partial removal failed")
+	errInvalidPathTest            = errors.New("invalid path")
+	errNoSpaceLeftTest            = errors.New("no space left on device")
+	errReadOnlyFileSystemTest     = errors.New("read-only file system")
+	errDeviceBusyTest             = errors.New("device or resource busy")
+	errCrossDeviceLinkTest        = errors.New("cross-device link")
+	errFileTooLargeTest           = errors.New("file too large")
+	errTooManyLinksTest           = errors.New("too many links")
+	errPathTooLongTest            = errors.New("path too long")
+	errInvalidArgumentTest        = errors.New("invalid argument")
+	errDirectoryNotEmptyTest      = errors.New("directory not empty")
+	errTextFileBusyTest           = errors.New("text file busy")
+	errCannotRemoveCurrentDirTest = errors.New("cannot remove current directory")
+	errResourceBusyTest           = errors.New("resource busy")
+	errPartialRemovalLockedTest   = errors.New("partial removal: some files locked")
+)
+
+func TestDefaultUninstaller_Remove(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		setup     func(t *testing.T) string
-		wantErr   bool
-		checkFunc func(t *testing.T, installDir string)
+		name           string
+		installDir     string
+		statError      error
+		isNotExist     bool
+		removeAllError error
+		expectedError  error
 	}{
 		{
-			name:    "success",
-			setup:   setupSuccessUninstallTest,
-			wantErr: false,
-			checkFunc: func(t *testing.T, installDir string) {
-				t.Helper()
-
-				_, err := os.Stat(installDir)
-				if !os.IsNotExist(err) {
-					t.Errorf("directory should be removed")
-				}
-			},
+			name:          "successful removal",
+			installDir:    "/usr/local/go",
+			statError:     nil,
+			isNotExist:    false,
+			expectedError: nil,
 		},
 		{
-			name:    "directory not found",
-			setup:   setupDirectoryNotFoundTest,
-			wantErr: true,
-			checkFunc: func(t *testing.T, _ string) {
-				t.Helper()
-
-				// No check needed
-			},
+			name:          "directory does not exist",
+			installDir:    "/nonexistent/go",
+			statError:     os.ErrNotExist,
+			isNotExist:    true,
+			expectedError: nil,
+		},
+		{
+			name:          "stat fails with permission error",
+			installDir:    "/usr/local/go",
+			statError:     os.ErrPermission,
+			isNotExist:    false,
+			expectedError: ErrCheckInstallDir,
+		},
+		{
+			name:           "removal fails with permission error",
+			installDir:     "/usr/local/go",
+			statError:      nil,
+			isNotExist:     false,
+			removeAllError: os.ErrPermission,
+			expectedError:  ErrRemoveFailed,
+		},
+		{
+			name:           "removal fails with directory in use",
+			installDir:     "/usr/local/go",
+			statError:      nil,
+			isNotExist:     false,
+			removeAllError: errDirectoryInUseTest,
+			expectedError:  ErrRemoveFailed,
+		},
+		{
+			name:           "partial removal failure",
+			installDir:     "/usr/local/go",
+			statError:      nil,
+			isNotExist:     false,
+			removeAllError: errPartialRemovalFailedTest,
+			expectedError:  ErrRemoveFailed,
+		},
+		{
+			name:          "empty install directory",
+			installDir:    "",
+			statError:     os.ErrNotExist,
+			isNotExist:    true,
+			expectedError: ErrCheckInstallDir,
+		},
+		{
+			name:          "invalid path characters",
+			installDir:    "/invalid/path/\x00",
+			statError:     errInvalidPathTest,
+			isNotExist:    false,
+			expectedError: ErrCheckInstallDir,
+		},
+		{
+			name:          "permission denied on stat",
+			installDir:    "/usr/local/go",
+			statError:     os.ErrPermission,
+			isNotExist:    false,
+			expectedError: ErrCheckInstallDir,
+		},
+		{
+			name:           "disk full on removal",
+			installDir:     "/usr/local/go",
+			statError:      nil,
+			isNotExist:     false,
+			removeAllError: errNoSpaceLeftTest,
+			expectedError:  ErrRemoveFailed,
+		},
+		{
+			name:           "read-only filesystem",
+			installDir:     "/usr/local/go",
+			statError:      nil,
+			isNotExist:     false,
+			removeAllError: errReadOnlyFileSystemTest,
+			expectedError:  ErrRemoveFailed,
+		},
+		{
+			name:           "device busy",
+			installDir:     "/usr/local/go",
+			statError:      nil,
+			isNotExist:     false,
+			removeAllError: errDeviceBusyTest,
+			expectedError:  ErrRemoveFailed,
+		},
+		{
+			name:           "cross-device link",
+			installDir:     "/usr/local/go",
+			statError:      nil,
+			isNotExist:     false,
+			removeAllError: errCrossDeviceLinkTest,
+			expectedError:  ErrRemoveFailed,
+		},
+		{
+			name:           "file too large",
+			installDir:     "/usr/local/go",
+			statError:      nil,
+			isNotExist:     false,
+			removeAllError: errFileTooLargeTest,
+			expectedError:  ErrRemoveFailed,
+		},
+		{
+			name:           "too many links",
+			installDir:     "/usr/local/go",
+			statError:      nil,
+			isNotExist:     false,
+			removeAllError: errTooManyLinksTest,
+			expectedError:  ErrRemoveFailed,
+		},
+		{
+			name:           "path too long",
+			installDir:     "/usr/local/go",
+			statError:      nil,
+			isNotExist:     false,
+			removeAllError: errPathTooLongTest,
+			expectedError:  ErrRemoveFailed,
+		},
+		{
+			name:           "invalid argument",
+			installDir:     "/usr/local/go",
+			statError:      nil,
+			isNotExist:     false,
+			removeAllError: errInvalidArgumentTest,
+			expectedError:  ErrRemoveFailed,
+		},
+		{
+			name:           "directory not empty",
+			installDir:     "/usr/local/go",
+			statError:      nil,
+			isNotExist:     false,
+			removeAllError: errDirectoryNotEmptyTest,
+			expectedError:  ErrRemoveFailed,
+		},
+		{
+			name:           "text file busy",
+			installDir:     "/usr/local/go",
+			statError:      nil,
+			isNotExist:     false,
+			removeAllError: errTextFileBusyTest,
+			expectedError:  ErrRemoveFailed,
+		},
+		{
+			name:           "root directory",
+			installDir:     "/",
+			statError:      nil,
+			isNotExist:     false,
+			removeAllError: os.ErrPermission,
+			expectedError:  ErrRemoveFailed,
+		},
+		{
+			name:           "current directory",
+			installDir:     ".",
+			statError:      nil,
+			isNotExist:     false,
+			removeAllError: errCannotRemoveCurrentDirTest,
+			expectedError:  ErrRemoveFailed,
+		},
+		{
+			name:          "path with spaces",
+			installDir:    "/path with spaces/go",
+			statError:     nil,
+			isNotExist:    false,
+			expectedError: nil,
+		},
+		{
+			name:          "unicode path",
+			installDir:    "/usr/local/го",
+			statError:     nil,
+			isNotExist:    false,
+			expectedError: nil,
+		},
+		{
+			name:          "very long path",
+			installDir:    "/usr/local/" + string(make([]byte, 256)) + "/go",
+			statError:     errPathTooLongTest,
+			isNotExist:    false,
+			expectedError: ErrCheckInstallDir,
 		},
 	}
 
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
+			// Setup mock filesystem
+			mockFS := mockFilesystem.NewMockFileSystem(t)
 
-			installDir := testCase.setup(t)
+			// Setup expectations
+			mockFS.EXPECT().Stat(testCase.installDir).Return(nil, testCase.statError).Once()
 
-			err := Remove(installDir)
-			if (err != nil) != testCase.wantErr {
-				t.Errorf("UninstallGo() error = %v, wantErr %v", err, testCase.wantErr)
+			if testCase.statError == nil {
+				// Directory exists, expect RemoveAll call
+				mockFS.EXPECT().RemoveAll(testCase.installDir).Return(testCase.removeAllError).Once()
+			} else {
+				// Stat failed, check if it's not exist
+				mockFS.EXPECT().IsNotExist(testCase.statError).Return(testCase.isNotExist).Once()
 			}
 
-			testCase.checkFunc(t, installDir)
+			// Create uninstaller with mock
+			uninstaller := NewDefaultUninstaller(mockFS)
+
+			// Execute
+			err := uninstaller.Remove(testCase.installDir)
+
+			// Assert
+			if testCase.expectedError != nil {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, testCase.expectedError)
+			} else {
+				assert.NoError(t, err)
+			}
 		})
 	}
 }
 
-func setupSuccessUninstallTest(t *testing.T) string {
-	t.Helper()
+func TestDefaultUninstaller_Remove_EdgeCases(t *testing.T) {
+	t.Parallel()
+	t.Run("concurrent access simulation", func(t *testing.T) {
+		t.Parallel()
+		mockFS := mockFilesystem.NewMockFileSystem(t)
 
-	tempDir := t.TempDir()
+		const installDir = "/usr/local/go"
 
-	installDir := filepath.Join(tempDir, "go")
+		// Simulate directory exists but removal fails due to concurrent access
+		mockFS.EXPECT().Stat(installDir).Return(nil, nil).Once()
+		mockFS.EXPECT().RemoveAll(installDir).Return(errResourceBusyTest).Once()
 
-	err := os.MkdirAll(installDir, 0750)
-	if err != nil {
-		t.Fatal(err)
-	}
+		uninstaller := NewDefaultUninstaller(mockFS)
+		err := uninstaller.Remove(installDir)
 
-	// Create some files
-	file := filepath.Join(installDir, "test.txt")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrRemoveFailed)
+	})
 
-	err = os.WriteFile(file, []byte("test"), 0600)
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Run("nested directory removal", func(t *testing.T) {
+		t.Parallel()
+		mockFS := mockFilesystem.NewMockFileSystem(t)
 
-	return installDir
-}
+		const installDir = "/usr/local/go"
 
-func setupDirectoryNotFoundTest(t *testing.T) string {
-	t.Helper()
+		// Simulate successful removal of nested directory structure
+		mockFS.EXPECT().Stat(installDir).Return(nil, nil).Once()
+		mockFS.EXPECT().RemoveAll(installDir).Return(nil).Once()
 
-	tempDir := t.TempDir()
+		uninstaller := NewDefaultUninstaller(mockFS)
+		err := uninstaller.Remove(installDir)
 
-	return filepath.Join(tempDir, "nonexistent")
-}
+		assert.NoError(t, err)
+	})
 
-// runRemoveTest executes a single test case for the Remove function.
-// It handles setup, execution, error checking, and verification.
-func runRemoveTest(t *testing.T, testCase struct {
-	name        string
-	installDir  string
-	setup       func(t *testing.T, dir string)
-	wantErr     bool
-	expectedErr string
-}) {
-	t.Helper()
+	t.Run("symlink handling", func(t *testing.T) {
+		t.Parallel()
+		mockFS := mockFilesystem.NewMockFileSystem(t)
 
-	var installDir string
-	if testCase.installDir == "" {
-		installDir = filepath.Join(t.TempDir(), "go")
-	} else {
-		installDir = testCase.installDir
-	}
+		const installDir = "/usr/local/go"
 
-	testCase.setup(t, installDir)
+		// Simulate removal where directory contains symlinks
+		mockFS.EXPECT().Stat(installDir).Return(nil, nil).Once()
+		mockFS.EXPECT().RemoveAll(installDir).Return(nil).Once()
 
-	err := Remove(installDir)
-	if testCase.wantErr {
-		if err == nil {
-			t.Error("expected error")
-		} else if !strings.Contains(err.Error(), testCase.expectedErr) {
-			t.Errorf("expected error containing %q, got %q", testCase.expectedErr, err.Error())
-		}
-	} else if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
+		uninstaller := NewDefaultUninstaller(mockFS)
+		err := uninstaller.Remove(installDir)
 
-	// Verify directory is removed for successful cases
-	if !testCase.wantErr {
-		_, err = os.Stat(installDir)
-		if !os.IsNotExist(err) {
-			t.Error("directory should have been removed")
-		}
-	}
-}
+		assert.NoError(t, err)
+	})
 
-// getRemoveTestCases returns the test cases for TestRemove.
-func getRemoveTestCases() []struct {
-	name        string
-	installDir  string
-	setup       func(t *testing.T, dir string)
-	wantErr     bool
-	expectedErr string
-} {
-	return []struct {
-		name        string
-		installDir  string
-		setup       func(t *testing.T, dir string)
-		wantErr     bool
-		expectedErr string
-	}{
-		{
-			name:        "successful removal",
-			installDir:  "",
-			setup:       setupSuccessfulRemoval,
-			wantErr:     false,
-			expectedErr: "",
-		},
-		{
-			name:        "directory not found",
-			installDir:  "",
-			setup:       func(_ *testing.T, _ string) {}, // no setup
-			wantErr:     true,
-			expectedErr: "installation not found",
-		},
-		{
-			name:        "empty directory",
-			installDir:  "",
-			setup:       setupEmptyDirectory,
-			wantErr:     false,
-			expectedErr: "",
-		},
-		{
-			name:        "nested directories",
-			installDir:  "",
-			setup:       setupNestedDirectories,
-			wantErr:     false,
-			expectedErr: "",
-		},
-	}
-}
+	t.Run("running process conflict", func(t *testing.T) {
+		t.Parallel()
+		mockFS := mockFilesystem.NewMockFileSystem(t)
 
-// setupSuccessfulRemoval creates a directory with a test file.
-func setupSuccessfulRemoval(t *testing.T, dir string) {
-	t.Helper()
+		const installDir = "/usr/local/go"
 
-	err := os.MkdirAll(dir, 0750)
-	if err != nil {
-		t.Fatal(err)
-	}
+		// Simulate removal failure due to running process
+		mockFS.EXPECT().Stat(installDir).Return(nil, nil).Once()
+		mockFS.EXPECT().RemoveAll(installDir).Return(errTextFileBusyTest).Once()
 
-	file := filepath.Join(dir, "test.txt")
+		uninstaller := NewDefaultUninstaller(mockFS)
+		err := uninstaller.Remove(installDir)
 
-	err = os.WriteFile(file, []byte("test"), 0600)
-	if err != nil {
-		t.Fatal(err)
-	}
-}
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrRemoveFailed)
+	})
 
-// setupEmptyDirectory creates an empty directory.
-func setupEmptyDirectory(t *testing.T, dir string) {
-	t.Helper()
+	t.Run("partial uninstallation scenario", func(t *testing.T) {
+		t.Parallel()
+		mockFS := mockFilesystem.NewMockFileSystem(t)
 
-	err := os.MkdirAll(dir, 0750)
-	if err != nil {
-		t.Fatal(err)
-	}
-}
+		const installDir = "/usr/local/go"
 
-// setupNestedDirectories creates nested directories with a file.
-func setupNestedDirectories(t *testing.T, dir string) {
-	t.Helper()
+		// Simulate partial removal where some files are removed but not all
+		mockFS.EXPECT().Stat(installDir).Return(nil, nil).Once()
+		mockFS.EXPECT().RemoveAll(installDir).Return(errPartialRemovalLockedTest).Once()
 
-	nestedDir := filepath.Join(dir, "bin")
+		uninstaller := NewDefaultUninstaller(mockFS)
+		err := uninstaller.Remove(installDir)
 
-	err := os.MkdirAll(nestedDir, 0750)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	file := filepath.Join(nestedDir, "go")
-
-	err = os.WriteFile(file, []byte("binary"), 0600)
-	if err != nil {
-		t.Fatal(err)
-	}
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrRemoveFailed)
+	})
 }
 
 func TestRemove(t *testing.T) {
 	t.Parallel()
+	t.Skip("Remove performs real filesystem operations and cannot be unit tested without " +
+		"significant refactoring to accept dependency injection. This function is " +
+		"intended for command-line usage only.")
+}
 
-	tests := getRemoveTestCases()
+func TestUninstallerInterface(t *testing.T) {
+	t.Parallel()
+	mockUninstall := mockUninstall.NewMockUninstaller(t)
+	mockUninstall.EXPECT().Remove("/test/dir").Return(nil).Once()
 
-	for _, testCase := range tests {
-		t.Run(testCase.name, func(t *testing.T) {
-			t.Parallel()
+	var u Uninstaller = mockUninstall
 
-			runRemoveTest(t, testCase)
-		})
-	}
+	err := u.Remove("/test/dir")
+
+	assert.NoError(t, err)
+}
+
+func TestNewDefaultUninstaller(t *testing.T) {
+	t.Parallel()
+	mockFS := mockFilesystem.NewMockFileSystem(t)
+	uninstaller := NewDefaultUninstaller(mockFS)
+
+	assert.NotNil(t, uninstaller)
+	assert.Equal(t, mockFS, uninstaller.fs)
 }

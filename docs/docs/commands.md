@@ -259,9 +259,9 @@ goUpdater version [flags]
 #### Flags
 
 - `--format` string: Output format: default, short, verbose, json
-- `--json`: Output in JSON format (shorthand for --format=json)
-- `--short`: Output only version number (shorthand for --format=short)
-- `--verbose`: Output all available information (shorthand for --format=verbose)
+- `--json`, `-j`: Output in JSON format (shorthand for --format=json)
+- `--short`, `-s`: Output only version number (shorthand for --format=short)
+- `--verbose`, `-v`: Output all available information (shorthand for --format=verbose)
 
 #### Examples
 

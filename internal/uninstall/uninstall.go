@@ -6,39 +6,15 @@
 package uninstall
 
 import (
-	"errors"
-	"fmt"
-	"os"
-
-	"github.com/nicholas-fedor/goUpdater/internal/logger"
+	"github.com/nicholas-fedor/goUpdater/internal/filesystem"
 )
 
-// errInstallationNotFound indicates the Go installation was not found.
-var errInstallationNotFound = errors.New("installation not found")
-
-// Remove removes the Go installation from the specified directory.
+// RunUninstall removes the Go installation from the specified directory.
 // It returns an error if the removal fails or if the directory does not exist.
-func Remove(installDir string) error {
-	logger.Debugf("Starting Go uninstallation: installDir=%s", installDir)
+// This function creates a DefaultUninstaller with real dependencies for backward compatibility.
+// WARNING: This function performs real filesystem operations and should not be used in tests.
+func RunUninstall(installDir string) error {
+	uninstaller := NewDefaultUninstaller(&filesystem.OSFileSystem{})
 
-	// Check if the directory exists
-	logger.Debug("Checking if installation directory exists")
-
-	_, err := os.Stat(installDir)
-	if os.IsNotExist(err) {
-		return fmt.Errorf("go installation not found at %s: %w", installDir, errInstallationNotFound)
-	}
-
-	// Remove the entire directory
-	logger.Debug("Removing installation directory")
-
-	err = os.RemoveAll(installDir)
-	if err != nil {
-		return fmt.Errorf("failed to remove Go installation: %w", err)
-	}
-
-	logger.Debug("Go uninstallation completed successfully")
-	logger.Infof("Successfully uninstalled Go from: %s", installDir)
-
-	return nil
+	return uninstaller.Remove(installDir)
 }

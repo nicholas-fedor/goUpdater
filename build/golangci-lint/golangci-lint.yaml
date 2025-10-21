@@ -1,10 +1,6 @@
 # goUpdater - A CLI tool for updating Go.
 # Repository: https://github.com/nicholas-fedor/goUpdater
 # License: AGPL-3.0-or-later
-#
-# Golangci-lint configuration for code quality and consistency enforcement.
-# This configuration enables comprehensive linting with custom settings for
-# complexity, style, and best practices specific to goUpdater.
 
 version: "2"
 
@@ -133,13 +129,61 @@ linters:
     - depguard # disabled to allow all imports
     - ireturn # disabled to allow framework interfaces
     - testpackage # disabled to allow internal unit test packages
+
   exclusions:
     rules:
-      - path: internal/version/version.go
+      # Disable complexity, error checking, duplication, and security linters for test files which often have higher complexity and duplicate setup code
+      - path: _test\.go
+        linters:
+          - dupl
+          - errcheck
+          - exhaustruct
+          - funlen
+          - gocyclo
+          - gosec
+      # Disable linters for types package to allow flexible interface design and relaxed documentation standards
+      - path: internal/types
+        linters:
+          - revive
+          - lll
+          - wrapcheck
+          - godoclint
+      # Disable exhaustruct for version command as struct fields are partially initialized at build time
+      - path: cmd/version/version\.go
+        linters:
+          - exhaustruct
+      # Disable interfacebloat for interface definitions which are designed to be comprehensive
+      - path: internal/types/interfaces\.go
+        linters:
+          - interfacebloat
+      # Disable gosec for standard library wrappers where security warnings are false positives
+      - path: internal/types/stdlib\.go
+        linters:
+          - gosec
+      # Disable gochecknoglobals for version package using build-time global variables
+      - path: internal/version/version\.go
         linters:
           - gochecknoglobals
-          - varnamelen
-        exclude: true
+      # Disable gosec for update operations requiring system-level changes
+      - path: internal/update/update\.go
+        linters:
+          - gosec
+      # Disable lll for privilege code with long lines for clarity
+      - path: internal/privileges/privileges\.go
+        linters:
+          - lll
+      # Disable gochecknoglobals and cyclop for logger with global state and complex logic
+      - path: internal/logger/logger\.go
+        linters:
+          - gochecknoglobals
+          - cyclop
+      # Disable exhaustruct for cobra.Command instantiations in cmd packages
+      - path: cmd/.*\.go
+        linters:
+          - exhaustruct
+
+
+
 
 # Issues configuration - controls how linting issues are reported and filtered
 issues:
