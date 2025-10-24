@@ -5,7 +5,6 @@
 package mocks
 
 import (
-	"compress/gzip"
 	"io"
 
 	"github.com/nicholas-fedor/goUpdater/internal/archive"
@@ -40,23 +39,23 @@ func (_m *MockProcessor) EXPECT() *MockProcessor_Expecter {
 }
 
 // NewGzipReader provides a mock function for the type MockProcessor
-func (_mock *MockProcessor) NewGzipReader(r io.Reader) (*gzip.Reader, error) {
+func (_mock *MockProcessor) NewGzipReader(r io.Reader) (io.ReadCloser, error) {
 	ret := _mock.Called(r)
 
 	if len(ret) == 0 {
 		panic("no return value specified for NewGzipReader")
 	}
 
-	var r0 *gzip.Reader
+	var r0 io.ReadCloser
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(io.Reader) (*gzip.Reader, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(io.Reader) (io.ReadCloser, error)); ok {
 		return returnFunc(r)
 	}
-	if returnFunc, ok := ret.Get(0).(func(io.Reader) *gzip.Reader); ok {
+	if returnFunc, ok := ret.Get(0).(func(io.Reader) io.ReadCloser); ok {
 		r0 = returnFunc(r)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*gzip.Reader)
+			r0 = ret.Get(0).(io.ReadCloser)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(io.Reader) error); ok {
@@ -91,12 +90,12 @@ func (_c *MockProcessor_NewGzipReader_Call) Run(run func(r io.Reader)) *MockProc
 	return _c
 }
 
-func (_c *MockProcessor_NewGzipReader_Call) Return(reader *gzip.Reader, err error) *MockProcessor_NewGzipReader_Call {
-	_c.Call.Return(reader, err)
+func (_c *MockProcessor_NewGzipReader_Call) Return(readCloser io.ReadCloser, err error) *MockProcessor_NewGzipReader_Call {
+	_c.Call.Return(readCloser, err)
 	return _c
 }
 
-func (_c *MockProcessor_NewGzipReader_Call) RunAndReturn(run func(r io.Reader) (*gzip.Reader, error)) *MockProcessor_NewGzipReader_Call {
+func (_c *MockProcessor_NewGzipReader_Call) RunAndReturn(run func(r io.Reader) (io.ReadCloser, error)) *MockProcessor_NewGzipReader_Call {
 	_c.Call.Return(run)
 	return _c
 }

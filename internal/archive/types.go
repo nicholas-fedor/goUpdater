@@ -14,7 +14,7 @@ import (
 
 // Processor handles archive extraction operations.
 type Processor interface {
-	NewGzipReader(r io.Reader) (*gzip.Reader, error)
+	NewGzipReader(r io.Reader) (io.ReadCloser, error)
 	NewTarReader(r io.Reader) TarReader
 }
 
@@ -37,7 +37,7 @@ type Extractor struct {
 }
 
 // NewGzipReader creates a new gzip reader.
-func (d *DefaultProcessor) NewGzipReader(r io.Reader) (*gzip.Reader, error) {
+func (d *DefaultProcessor) NewGzipReader(r io.Reader) (io.ReadCloser, error) {
 	reader, err := gzip.NewReader(r)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gzip reader: %w", err)

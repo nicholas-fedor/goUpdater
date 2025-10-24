@@ -8,14 +8,14 @@ import (
 	"fmt"
 )
 
-// ErrInvalidPath indicates an invalid file path in the archive.
-var ErrInvalidPath = errors.New("invalid path")
-
-// ErrArchiveNotRegular indicates the archive path is not a regular file.
-var ErrArchiveNotRegular = errors.New("archive path is not a regular file")
-
-// ErrTooManyFiles indicates the archive contains too many files.
-var ErrTooManyFiles = errors.New("archive contains too many files")
+var (
+	// ErrInvalidPath indicates an invalid file path in the archive.
+	ErrInvalidPath = errors.New("invalid path")
+	// ErrArchiveNotRegular indicates the archive path is not a regular file.
+	ErrArchiveNotRegular = errors.New("archive path is not a regular file")
+	// ErrTooManyFiles indicates the archive contains too many files.
+	ErrTooManyFiles = errors.New("archive contains too many files")
+)
 
 // ExtractionError represents archive extraction failures with contextual information.
 type ExtractionError struct {
@@ -41,7 +41,7 @@ type ValidationError struct {
 
 // Error implements the error interface for ExtractionError.
 // Note: This method sanitizes paths to prevent information disclosure.
-func (e *ExtractionError) Error() string {
+func (e ExtractionError) Error() string {
 	sanitizedArchive := sanitizePathForError(e.ArchivePath)
 	sanitizedDest := sanitizePathForError(e.Destination)
 
@@ -50,26 +50,40 @@ func (e *ExtractionError) Error() string {
 }
 
 // Unwrap returns the underlying error for compatibility with errors.Is and errors.As.
-func (e *ExtractionError) Unwrap() error {
+func (e ExtractionError) Unwrap() error {
 	return e.Err
 }
 
 // Error implements the error interface for SecurityError.
 // Note: This method sanitizes paths to prevent information disclosure.
-func (e *SecurityError) Error() string {
+func (e SecurityError) Error() string {
 	sanitizedPath := sanitizePathForError(e.AttemptedPath)
 
 	return fmt.Sprintf("security error: path=%s validation=%s", sanitizedPath, e.Validation)
 }
 
+// Is implements the error interface for SecurityError.
+// It checks if the target error is equivalent to this SecurityError.
+func (e SecurityError) Is(target error) bool {
+	if other, ok := target.(SecurityError); ok {
+		return e.AttemptedPath == other.AttemptedPath && e.Validation == other.Validation && errors.Is(e.Err, other.Err)
+	}
+
+	if other, ok := target.(*SecurityError); ok {
+		return e.AttemptedPath == other.AttemptedPath && e.Validation == other.Validation && errors.Is(e.Err, other.Err)
+	}
+
+	return errors.Is(e.Err, target)
+}
+
 // Unwrap returns the underlying error for compatibility with errors.Is and errors.As.
-func (e *SecurityError) Unwrap() error {
+func (e SecurityError) Unwrap() error {
 	return e.Err
 }
 
 // Error implements the error interface for ValidationError.
 // Note: This method does not expose sensitive file system information to prevent information disclosure.
-func (e *ValidationError) Error() string {
+func (e ValidationError) Error() string {
 	// Sanitize file path to prevent information disclosure
 	sanitizedPath := sanitizePathForError(e.FilePath)
 
@@ -77,7 +91,7 @@ func (e *ValidationError) Error() string {
 }
 
 // Unwrap returns the underlying error for compatibility with errors.Is and errors.As.
-func (e *ValidationError) Unwrap() error {
+func (e ValidationError) Unwrap() error {
 	return e.Err
 }
 

@@ -4,16 +4,23 @@
 package archive
 
 import (
+	"archive/tar"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 
-	"golang.org/x/mod/semver"
-
 	"github.com/nicholas-fedor/goUpdater/internal/filesystem"
 	"github.com/nicholas-fedor/goUpdater/internal/logger"
+)
+
+const (
+	defaultDirPerm  = 0755 // Default directory permissions
+	defaultFilePerm = 0644 // Default file permissions
+	unixPermMask    = 0777 // Unix permission mask for tar headers
+	goBinaryPerm    = 0755 // Permissions for extracted go binary
 )
 
 // NewExtractor creates a new Extractor with the given dependencies.
@@ -31,9 +38,12 @@ func NewExtractor(fs filesystem.FileSystem, processor Processor) *Extractor {
 //nolint:cyclop,funlen // complex archive extraction with security validations
 func (e *Extractor) Extract(archivePath, destDir string) error {
 	archivePath = filepath.Clean(archivePath)
-	logger.Debugf("Extract archive: %s", archivePath)
+	destDir = filepath.Clean(destDir)
 
-	err := e.Validate(archivePath)
+	logger.Debugf("Extract archive: %s", archivePath)
+	logger.Debugf("Extract destination: %s", destDir)
+
+	err := e.Validate(archivePath, destDir)
 	if err != nil {
 		return err
 	}
@@ -92,20 +102,36 @@ func (e *Extractor) Extract(archivePath, destDir string) error {
 
 		fileCount++
 		if fileCount > maxFiles {
-			return fmt.Errorf("archive contains too many files: %w", ErrTooManyFiles)
+			return &ExtractionError{
+				ArchivePath: archivePath,
+				Destination: destDir,
+				Context:     "validating file count",
+				Err:         fmt.Errorf("archive contains too many files: %w", ErrTooManyFiles),
+			}
 		}
 
 		// Check for zip bomb: extremely large files or excessive total size
 		if header.Size > maxFileSize {
-			return fmt.Errorf("archive contains file too large: %s (%d bytes): %w", header.Name, header.Size, ErrTooManyFiles)
+			return &ExtractionError{
+				ArchivePath: archivePath,
+				Destination: destDir,
+				Context:     "validating file size",
+				Err: fmt.Errorf("archive contains file too large: %s (%d bytes): %w",
+					header.Name, header.Size, ErrTooManyFiles),
+			}
 		}
 
 		totalSize += header.Size
 		if totalSize > maxTotalSize {
-			return fmt.Errorf("archive total size too large: %d bytes: %w", totalSize, ErrTooManyFiles)
+			return &ExtractionError{
+				ArchivePath: archivePath,
+				Destination: destDir,
+				Context:     "validating total size",
+				Err:         fmt.Errorf("archive total size too large: %d bytes: %w", totalSize, ErrTooManyFiles),
+			}
 		}
 
-		err = e.processTarEntry(tarReader, header, destDir)
+		err = e.processTarEntry(tarReader, header, destDir, archivePath)
 		if err != nil {
 			return err
 		}
@@ -116,89 +142,445 @@ func (e *Extractor) Extract(archivePath, destDir string) error {
 	return nil
 }
 
-// ExtractVersion extracts the Go version from an archive filename.
-// It handles both full paths and filenames by extracting the base name.
-// The function removes the .tar.gz extension if present, then parses the filename
-// to extract the complete version string up to the platform part (e.g., "go1.25.2" from "go1.25.2.linux-amd64.tar.gz").
-//
-// The parsing logic assumes Go archive filenames follow the standard format:
-// "go<major>.<minor>.<patch><suffix>.<platform>-<arch>.tar.gz"
-//
-// Parameters:
-//   - filename: The archive filename or full path to parse
-//
-// Returns:
-//   - The extracted complete version (e.g., "go1.25.2") if parsing succeeds
-//   - The original filename (after basename extraction) as fallback if parsing fails
-//
-// Examples:
-//   - "go1.21.0.linux-amd64.tar.gz" -> "go1.21.0"
-//   - "/path/to/go1.20.0.darwin-amd64.tar.gz" -> "go1.20.0"
-//   - "invalid-filename" -> "invalid-filename"
-//
-// cyclop:ignore
-func ExtractVersion(filename string) string { //nolint:cyclop
-	// Extract basename in case a full path is provided
-	filename = filepath.Base(filename)
-	logger.Debugf("ExtractVersion input filename: %s", filename)
+// Validate checks if the archive file exists and is a regular file.
+// It returns an error if the archive path does not exist or is not a regular file.
+func (e *Extractor) Validate(archivePath, destDir string) error {
+	logger.Debugf("Extractor.Validate: validating archive: %s", archivePath)
+	logger.Debugf("Extractor.Validate: destination: %s", destDir)
 
-	// Remove .tar.gz extension if present
-	if len(filename) > 7 && strings.HasSuffix(filename, ".tar.gz") {
-		filename = filename[:len(filename)-7]
+	info, err := e.fs.Stat(archivePath)
+	if err != nil {
+		logger.Debugf("Extractor.Validate: Stat failed for %s: %v", archivePath, err)
+
+		return &ExtractionError{
+			ArchivePath: archivePath,
+			Destination: destDir,
+			Context:     "validating archive",
+			Err: &ValidationError{
+				FilePath: archivePath,
+				Criteria: "file existence",
+				Err:      err,
+			},
+		}
 	}
 
-	logger.Debugf("ExtractVersion after extension removal: %s", filename)
+	if !info.Mode().IsRegular() {
+		logger.Debugf("Extractor.Validate: %s is not a regular file", archivePath)
 
-	// Check for valid go prefix
-	if !strings.HasPrefix(filename, "go") {
-		logger.Debugf("ExtractVersion fallback: %s", filename)
-
-		return filename
+		return &ExtractionError{
+			ArchivePath: archivePath,
+			Destination: destDir,
+			Context:     "validating archive",
+			Err: &ValidationError{
+				FilePath: archivePath,
+				Criteria: "regular file type",
+				Err:      ErrArchiveNotRegular,
+			},
+		}
 	}
 
-	rest := filename[2:] // part after "go"
-	if rest == "" {
-		logger.Debugf("ExtractVersion fallback: %s", filename)
+	logger.Debugf("Extractor.Validate: validation successful for %s", archivePath)
 
-		return filename
+	return nil
+}
+
+// processTarEntry processes a single tar entry, validating and extracting it to the destination directory.
+// It performs multiple layers of path validation including symlink resolution to prevent path traversal attacks.
+//
+//nolint:funlen // complex archive extraction with security validations
+func (e *Extractor) processTarEntry(tarReader TarReader, header *TarHeader, destDir, archivePath string) error {
+	logger.Debugf("Processing tar entry: %s", header.Name)
+	// Validate the header name
+	err := validateHeaderName(header.Name)
+	if err != nil {
+		return &ExtractionError{
+			ArchivePath: archivePath,
+			Destination: destDir,
+			Context:     "validating header name",
+			Err:         err,
+		}
 	}
 
-	// Check if the rest starts with a digit (valid version format)
-	if rest[0] < '0' || rest[0] > '9' {
-		logger.Debugf("ExtractVersion fallback: %s", filename)
+	// Construct target path safely
+	cleanDestDir := filepath.Clean(destDir)
+	// gosec G305 is triggered by filepath.Join, but we have validated the path thoroughly above
+	// The path is safe because:
+	// 1. header.Name is validated to not contain .. or be absolute
+	// 2. targetPath is checked to be within cleanDestDir
+	// 3. ValidatePath ensures no traversal
+	targetPath := cleanDestDir + string(filepath.Separator) + header.Name
+	targetPath = filepath.Clean(targetPath)
 
-		return filename
+	// Validate that the target path is within the destination directory
+	if !strings.HasPrefix(targetPath, cleanDestDir+string(filepath.Separator)) && targetPath != cleanDestDir {
+		return &ExtractionError{
+			ArchivePath: archivePath,
+			Destination: destDir,
+			Context:     "validating target path within destination",
+			Err:         fmt.Errorf("invalid file path in archive: %s: %w", targetPath, ErrInvalidPath),
+		}
 	}
 
-	// Split into parts by "."
-	parts := strings.Split(rest, ".")
+	// Additional validation to prevent path traversal
+	rel, err := filepath.Rel(cleanDestDir, targetPath)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return &ExtractionError{
+			ArchivePath: archivePath,
+			Destination: destDir,
+			Context:     "validating relative path",
+			Err:         fmt.Errorf("invalid file path in archive: %s: %w", targetPath, ErrInvalidPath),
+		}
+	}
 
-	versionParts := make([]string, 0, len(parts))
+	// Ensure the target path is safe by checking it doesn't escape the destination directory
+	if !strings.HasPrefix(targetPath, cleanDestDir) {
+		return &ExtractionError{
+			ArchivePath: archivePath,
+			Destination: destDir,
+			Context:     "validating target path safety",
+			Err:         fmt.Errorf("invalid file path in archive: %s: %w", targetPath, ErrInvalidPath),
+		}
+	}
 
-	for _, part := range parts {
-		// Stop at the first part containing "-" (platform part)
-		if strings.Contains(part, "-") {
-			break
+	// Final safety check: ensure the path is validated before use
+	err = ValidatePath(targetPath, cleanDestDir)
+	if err != nil {
+		return &ExtractionError{
+			ArchivePath: archivePath,
+			Destination: destDir,
+			Context:     "final path validation",
+			Err:         err,
+		}
+	}
+
+	// Validate resolved path to prevent symlink-based path traversal attacks
+	// This accounts for previously extracted symlinks that could redirect the extraction path
+	err = e.validateResolvedPath(targetPath, cleanDestDir)
+	if err != nil {
+		return &ExtractionError{
+			ArchivePath: archivePath,
+			Destination: destDir,
+			Context:     "validating resolved path",
+			Err:         err,
+		}
+	}
+
+	// gosec G305 is triggered by filepath.Join, but we have validated the path thoroughly above
+	// The path is safe because:
+	// 1. header.Name is validated to not contain .. or be absolute
+	// 2. targetPath is checked to be within cleanDestDir
+	// 3. ValidatePath ensures no traversal
+	// 4. Symlinks in the path are resolved and validated to stay within cleanDestDir
+	err = e.extractEntry(tarReader, header, targetPath, cleanDestDir, cleanDestDir, archivePath)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// extractDirectory creates a directory with the specified permissions.
+func (e *Extractor) extractDirectory(targetPath string, mode os.FileMode) error {
+	// Create directory permissively, then set correct permissions
+	err := e.fs.MkdirAll(targetPath, defaultDirPerm) // #nosec G301
+	if err != nil {
+		return fmt.Errorf("mkdirall failed: %w", err)
+	}
+
+	err = e.fs.Chmod(targetPath, mode)
+	if err != nil {
+		return fmt.Errorf("chmod failed: %w", err)
+	}
+
+	return nil
+}
+
+// extractRegularFile extracts a regular file from the tar reader using buffered I/O for better performance.
+func (e *Extractor) extractRegularFile(tarReader TarReader, targetPath string, mode os.FileMode) error {
+	targetPath = filepath.Clean(targetPath)
+
+	// Ensure parent directory exists
+	err := e.fs.MkdirAll(filepath.Dir(targetPath), defaultDirPerm) // #nosec G301
+	if err != nil {
+		return fmt.Errorf("mkdirall failed: %w", err)
+	}
+
+	// Create file permissively, then set correct permissions
+	file, err := e.fs.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY, defaultFilePerm) // #nosec G302
+	if err != nil {
+		return fmt.Errorf("open file failed: %w", err)
+	}
+
+	// Use buffered copy with 64KB buffer for better I/O performance
+	buffer := make([]byte, 64*1024) //nolint:mnd // 64KB buffer size is a reasonable constant for I/O operations
+
+	_, err = io.CopyBuffer(file, tarReader, buffer)
+	if err != nil {
+		_ = file.Close()
+
+		return fmt.Errorf("copy buffer failed: %w", err)
+	}
+
+	err = file.Close()
+	if err != nil {
+		return fmt.Errorf("close failed: %w", err)
+	}
+
+	// Set correct permissions
+	err = e.fs.Chmod(targetPath, mode)
+	if err != nil {
+		return fmt.Errorf("chmod failed: %w", err)
+	}
+
+	return nil
+}
+
+// extractSymlink creates a symlink after validating the linkname.
+func (e *Extractor) extractSymlink(targetPath, linkname, baseDir, destDir, archivePath string) error {
+	// Validate the linkname to prevent symlink attacks
+	err := e.validateLinkname(linkname, baseDir, destDir)
+	if err != nil {
+		return &ExtractionError{
+			ArchivePath: archivePath,
+			Destination: destDir,
+			Context:     "validating header name",
+			Err:         err,
+		}
+	}
+
+	// Create symlink
+	err = e.fs.Symlink(linkname, targetPath)
+	if err != nil {
+		return fmt.Errorf("symlink failed: %w", err)
+	}
+
+	return nil
+}
+
+// extractHardLink creates a hard link after validating the linkname.
+func (e *Extractor) extractHardLink(targetPath, linkname, baseDir, destDir, archivePath string) error {
+	// Validate the linkname to prevent hard link attacks
+	err := e.validateLinkname(linkname, baseDir, destDir)
+	if err != nil {
+		return &ExtractionError{
+			ArchivePath: archivePath,
+			Destination: destDir,
+			Context:     "validating header name",
+			Err:         err,
+		}
+	}
+
+	// Create hard link
+	err = e.fs.Link(linkname, targetPath)
+	if err != nil {
+		return &ExtractionError{
+			ArchivePath: archivePath,
+			Destination: destDir,
+			Context:     "extracting hard link",
+			Err:         err,
+		}
+	}
+
+	return nil
+}
+
+// extractEntry extracts a single entry from the tar archive.
+// It handles directories, regular files, symlinks, and hard links, preserving permissions from the tar header.
+// Files and directories are created permissively then chmod to the correct permissions from header.Mode & 0777.
+func (e *Extractor) extractEntry(
+	tarReader TarReader,
+	header *TarHeader,
+	targetPath, baseDir, destDir, archivePath string,
+) error {
+	// Extract permissions from tar header, masking to standard Unix permissions
+	mode := os.FileMode(header.Mode & unixPermMask) // #nosec G115
+
+	switch header.Typeflag {
+	case tar.TypeDir:
+		err := e.extractDirectory(targetPath, mode)
+		if err != nil {
+			return &ExtractionError{
+				ArchivePath: archivePath,
+				Destination: destDir,
+				Context:     "extracting directory",
+				Err:         err,
+			}
 		}
 
-		versionParts = append(versionParts, part)
+	case tar.TypeReg:
+		err := e.extractRegularFile(tarReader, targetPath, mode)
+		if err != nil {
+			return &ExtractionError{
+				ArchivePath: archivePath,
+				Destination: destDir,
+				Context:     "extracting file",
+				Err:         err,
+			}
+		}
+
+	case tar.TypeSymlink:
+		err := e.extractSymlink(targetPath, header.Linkname, baseDir, destDir, archivePath)
+		if err != nil {
+			return &ExtractionError{
+				ArchivePath: archivePath,
+				Destination: destDir,
+				Context:     "extracting symlink",
+				Err:         err,
+			}
+		}
+
+	case tar.TypeLink:
+		err := e.extractHardLink(targetPath, header.Linkname, baseDir, destDir, archivePath)
+		if err != nil {
+			return &ExtractionError{
+				ArchivePath: archivePath,
+				Destination: destDir,
+				Context:     "extracting hard link",
+				Err:         err,
+			}
+		}
+
+	default:
+		// Skip unsupported entry types (e.g., character devices, block devices)
+		return nil
 	}
 
-	if len(versionParts) == 0 {
-		logger.Debugf("ExtractVersion fallback: %s", filename)
+	return nil
+}
 
-		return filename
+// validateSymlinkChain validates that a symlink chain resolves within the destination directory.
+func (e *Extractor) validateSymlinkChain(resolved, destDir string) error {
+	evaled, err := e.fs.EvalSymlinks(resolved)
+	if err != nil {
+		return &SecurityError{
+			AttemptedPath: resolved,
+			Validation:    "symlink chain resolution",
+			Err:           err,
+		}
 	}
 
-	version := "go" + strings.Join(versionParts, ".")
-	logger.Debugf("ExtractVersion extracted version: %s", version)
-
-	// Validate the extracted version using semver
-	if !semver.IsValid("v" + strings.TrimPrefix(version, "go")) {
-		logger.Debugf("ExtractVersion invalid version: %s", version)
-
-		return filename
+	evaled = filepath.Clean(evaled)
+	if !strings.HasPrefix(evaled, destDir+string(filepath.Separator)) && evaled != destDir {
+		return &SecurityError{
+			AttemptedPath: resolved,
+			Validation:    "symlink chain destination check",
+			Err:           ErrInvalidPath,
+		}
 	}
 
-	return version
+	return nil
+}
+
+// validateResolvedPath resolves any symlinks in the target path and validates
+// that the resolved path stays within the destination directory.
+func (e *Extractor) validateResolvedPath(targetPath, destDir string) error {
+	resolved, err := e.fs.EvalSymlinks(targetPath)
+	if err != nil {
+		return &SecurityError{
+			AttemptedPath: targetPath,
+			Validation:    "resolved path destination check",
+			Err:           err,
+		}
+	}
+
+	resolved = filepath.Clean(resolved)
+	if !strings.HasPrefix(resolved, destDir+string(filepath.Separator)) && resolved != destDir {
+		return &SecurityError{
+			AttemptedPath: targetPath,
+			Validation:    "symlink chain destination check",
+			Err:           ErrInvalidPath,
+		}
+	}
+
+	return nil
+}
+
+// validateLinkname validates the linkname for symlinks and hard links to prevent symlink attacks.
+// It ensures the linkname does not contain absolute paths, ".." sequences, backslashes, or null bytes,
+// resolves the path relative to the base directory and checks that the resolved path stays within the destination directory.
+// Additionally, if the resolved path exists and is a symlink, it resolves any symlink chains and verifies
+// the final resolved path is within the destination directory. It also prevents links to sensitive system files.
+//
+//nolint:lll,cyclop,funlen
+func (e *Extractor) validateLinkname(linkname, baseDir, destDir string) error {
+	if filepath.IsAbs(linkname) {
+		return &SecurityError{
+			AttemptedPath: linkname,
+			Validation:    "absolute path prevention",
+			Err:           ErrInvalidPath,
+		}
+	}
+
+	if strings.Contains(linkname, "..") {
+		return &SecurityError{
+			AttemptedPath: linkname,
+			Validation:    "parent directory reference prevention",
+			Err:           ErrInvalidPath,
+		}
+	}
+
+	if strings.Contains(linkname, "\\") {
+		return &SecurityError{
+			AttemptedPath: linkname,
+			Validation:    "backslash prevention",
+			Err:           ErrInvalidPath,
+		}
+	}
+
+	if strings.Contains(linkname, "\x00") {
+		return &SecurityError{
+			AttemptedPath: linkname,
+			Validation:    "null byte prevention",
+			Err:           ErrInvalidPath,
+		}
+	}
+
+	resolved := filepath.Join(baseDir, linkname)
+	resolved = filepath.Clean(resolved)
+
+	// Check if resolved is within destDir
+	if !strings.HasPrefix(resolved, destDir+string(filepath.Separator)) && resolved != destDir {
+		return &SecurityError{
+			AttemptedPath: linkname,
+			Validation:    "linkname destination check",
+			Err:           ErrInvalidPath,
+		}
+	}
+
+	// Additional validation using filepath.Rel
+	rel, err := filepath.Rel(destDir, resolved)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return &SecurityError{
+			AttemptedPath: linkname,
+			Validation:    "relative path validation",
+			Err:           ErrInvalidPath,
+		}
+	}
+
+	// Prevent links to sensitive system files
+	sensitivePaths := []string{"/etc", "/usr", "/bin", "/sbin", "/dev", "/proc", "/sys", "/root", "/home"}
+	for _, sensitive := range sensitivePaths {
+		if strings.HasPrefix(resolved, sensitive) {
+			return &SecurityError{
+				AttemptedPath: linkname,
+				Validation:    "sensitive system path prevention",
+				Err:           ErrInvalidPath,
+			}
+		}
+	}
+
+	// If the resolved path exists and is a symlink, resolve the symlink chain
+	info, err := e.fs.Lstat(resolved)
+	if err == nil && info.Mode()&os.ModeSymlink != 0 {
+		err = e.validateSymlinkChain(resolved, destDir)
+		if err != nil {
+			return &SecurityError{
+				AttemptedPath: linkname,
+				Validation:    "symlink chain validation",
+				Err:           err,
+			}
+		}
+	}
+
+	return nil
 }
