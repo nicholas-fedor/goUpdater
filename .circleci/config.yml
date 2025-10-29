@@ -3,7 +3,7 @@ version: 2.1
 jobs:
   build:
     docker:
-      - image: cimg/go:1.25.3@sha256:c2dc33e96ec6b6c9a95cec245db8344cb7d625f18321bda0279742ef3d71a833
+      - image: cimg/go:1.25.3@sha256:68b245d4babc309e703db5ec9e948325726fe1eee228db937a9e43ed0da4339f
     steps:
       - checkout
       - restore_cache:
