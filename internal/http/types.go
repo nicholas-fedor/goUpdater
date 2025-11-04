@@ -27,6 +27,6 @@ type GoFileInfo struct {
 	Arch     string `json:"arch"`
 	Version  string `json:"version"`
 	Sha256   string `json:"sha256"`
-	Size     int    `json:"size"`
+	Size     int64  `json:"size"`
 	Kind     string `json:"kind"`
 }

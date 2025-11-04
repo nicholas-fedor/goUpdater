@@ -8,14 +8,9 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
+	mockExec "github.com/nicholas-fedor/goUpdater/internal/exec"
 )
 
-// ExecCommand defines the interface for executing commands.
-type ExecCommand interface {
-	Output() ([]byte, error)
-	Path() string
-	Args() []string
-}
 
 // NewMockCommandExecutor creates a new instance of MockCommandExecutor. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
@@ -35,6 +30,9 @@ func NewMockCommandExecutor(t interface {
 type MockCommandExecutor struct {
 	mock.Mock
 }
+
+// ExecCommand is an alias for mockExec.Command to avoid import conflicts
+type ExecCommand = mockExec.Command
 
 type MockCommandExecutor_Expecter struct {
 	mock *mock.Mock

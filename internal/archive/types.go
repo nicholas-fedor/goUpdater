@@ -27,13 +27,14 @@ type TarReader interface {
 	Read(b []byte) (int, error)
 }
 
-// TarHeader represents a tar header.
-type TarHeader = tar.Header
-
 // Extractor handles archive extraction with dependency injection.
 type Extractor struct {
-	fs        filesystem.FileSystem
-	processor Processor
+	fs           filesystem.FileSystem
+	processor    Processor
+	maxFiles     int
+	maxTotalSize int64
+	maxFileSize  int64
+	bufferSize   int
 }
 
 // NewGzipReader creates a new gzip reader.

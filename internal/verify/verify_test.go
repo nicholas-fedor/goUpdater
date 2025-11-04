@@ -377,15 +377,100 @@ func TestVerifier_GetVerificationInfo(t *testing.T) {
 
 func TestVerifier_GetInstalledVersionWithLogging(t *testing.T) {
 	t.Parallel()
-	// Since the implementation is empty, just test it doesn't panic
-	mockFS := mockFilesystem.NewMockFileSystem(t)
-	mockExecutor := mockExec.NewMockCommandExecutor(t)
 
-	verifier := NewVerifier(mockFS, mockExecutor)
-	result, err := verifier.GetInstalledVersionWithLogging("/usr/local/go")
+	tests := []struct {
+		name           string
+		installDir     string
+		mockStatErr    error
+		mockCmdOutput  []byte
+		mockCmdErr     error
+		expectedResult string
+		expectedError  string
+	}{
+		{
+			name:           "successful version retrieval",
+			installDir:     "/usr/local/go",
+			mockStatErr:    nil,
+			mockCmdOutput:  []byte("go version go1.21.0 linux/amd64\n"),
+			mockCmdErr:     nil,
+			expectedResult: "go1.21.0",
+			expectedError:  "",
+		},
+		{
+			name:           "go binary not found",
+			installDir:     "/usr/local/go",
+			mockStatErr:    &os.PathError{Op: "stat", Path: "/usr/local/go/bin/go", Err: os.ErrNotExist},
+			mockCmdOutput:  nil,
+			mockCmdErr:     nil,
+			expectedResult: "",
+			expectedError:  "",
+		},
+		{
+			name:           "stat fails with other error",
+			installDir:     "/usr/local/go",
+			mockStatErr:    errPermissionDeniedTest,
+			mockCmdOutput:  nil,
+			mockCmdErr:     nil,
+			expectedResult: "",
+			expectedError:  "failed to check Go binary at /usr/local/go/bin/go: permission denied",
+		},
+		{
+			name:           "command execution fails",
+			installDir:     "/usr/local/go",
+			mockStatErr:    nil,
+			mockCmdOutput:  nil,
+			mockCmdErr:     errCommandFailedTest,
+			expectedResult: "",
+			expectedError:  "failed to execute 'go version' at /usr/local/go/bin/go",
+		},
+		{
+			name:           "invalid go version output format",
+			installDir:     "/usr/local/go",
+			mockStatErr:    nil,
+			mockCmdOutput:  []byte("invalid output"),
+			mockCmdErr:     nil,
+			expectedResult: "",
+			expectedError:  "unexpected go version output format",
+		},
+	}
 
-	require.NoError(t, err)
-	assert.Empty(t, result)
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			mockFS := mockFilesystem.NewMockFileSystem(t)
+			mockExecutor := mockExec.NewMockCommandExecutor(t)
+
+			goBinPath := "/usr/local/go/bin/go"
+
+			switch {
+			case testCase.mockStatErr != nil:
+				mockFS.EXPECT().Stat(goBinPath).Return(nil, testCase.mockStatErr).Once()
+
+				pathErr := &os.PathError{}
+				if errors.As(testCase.mockStatErr, &pathErr) {
+					mockFS.EXPECT().IsNotExist(testCase.mockStatErr).Return(true).Once()
+				} else if testCase.mockStatErr.Error() == "permission denied" {
+					mockFS.EXPECT().IsNotExist(testCase.mockStatErr).Return(false).Once()
+				}
+			default:
+				mockFS.EXPECT().Stat(goBinPath).Return(nil, nil).Once()
+				mockExecutor.EXPECT().CommandContext(context.Background(), goBinPath,
+					[]string{"version"}).Return(newMockCmd(testCase.mockCmdOutput, testCase.mockCmdErr)).Once()
+			}
+
+			verifier := NewVerifier(mockFS, mockExecutor)
+			result, err := verifier.GetInstalledVersionWithLogging(testCase.installDir)
+
+			if testCase.expectedError == "" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), testCase.expectedError)
+			}
+
+			assert.Equal(t, testCase.expectedResult, result)
+		})
+	}
 }
 
 func TestVerifier_displayVerificationInfo(t *testing.T) {
@@ -417,7 +502,7 @@ func TestInstallation(t *testing.T) {
 	// Mock the OS filesystem and executor
 	mockFS.EXPECT().Stat("/usr/local/go/bin/go").Return(nil, nil).Once()
 	mockExecutor.EXPECT().CommandContext(context.Background(), "/usr/local/go/bin/go",
-		"version").Return(newMockCmd([]byte("go version go1.21.0 linux/amd64"), nil)).Once()
+		[]string{"version"}).Return(newMockCmd([]byte("go version go1.21.0 linux/amd64"), nil)).Once()
 
 	t.Skip("Skipping global function test to avoid host operations")
 }
@@ -439,16 +524,105 @@ func TestGetInstalledVersionWithLogging(t *testing.T) {
 
 func TestVerify(t *testing.T) {
 	t.Parallel()
-	// Verify calls os.Exit, so we can't test it directly without mocking os.Exit
-	// But since it just calls GetVerificationInfo and displayVerificationInfo, which are tested,
-	// and os.Exit would terminate the test, we skip.
-	t.Skip("Verify calls os.Exit, cannot test directly")
+
+	tests := []struct {
+		name           string
+		installDir     string
+		mockVersion    string
+		mockVersionErr error
+		expectedError  string
+	}{
+		{
+			name:           "successful verification",
+			installDir:     "/usr/local/go",
+			mockVersion:    "go1.21.0",
+			mockVersionErr: nil,
+			expectedError:  "",
+		},
+		{
+			name:           "verification fails",
+			installDir:     "/usr/local/go",
+			mockVersion:    "",
+			mockVersionErr: errStatErrorTest,
+			expectedError:  "failed to get installed version: failed to check Go binary at /usr/local/go/bin/go: stat error",
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			mockFS := mockFilesystem.NewMockFileSystem(t)
+			mockExecutor := mockExec.NewMockCommandExecutor(t)
+
+			// Mock GetVerificationInfo
+			switch {
+			case testCase.mockVersionErr != nil:
+				mockFS.EXPECT().Stat("/usr/local/go/bin/go").Return(nil, testCase.mockVersionErr).Once()
+
+				pathErr := &os.PathError{}
+				if errors.As(testCase.mockVersionErr, &pathErr) {
+					mockFS.EXPECT().IsNotExist(testCase.mockVersionErr).Return(true).Once()
+				} else if testCase.mockVersionErr.Error() == "stat error" {
+					mockFS.EXPECT().IsNotExist(testCase.mockVersionErr).Return(false).Once()
+				}
+			case testCase.mockVersion == "":
+				mockFS.EXPECT().Stat("/usr/local/go/bin/go").Return(nil,
+					&os.PathError{Op: "stat", Path: "/usr/local/go/bin/go", Err: os.ErrNotExist}).Once()
+				mockFS.EXPECT().IsNotExist(mock.Anything).Return(true).Once()
+			default:
+				mockFS.EXPECT().Stat("/usr/local/go/bin/go").Return(nil, nil).Once()
+				mockExecutor.EXPECT().CommandContext(context.Background(), "/usr/local/go/bin/go",
+					[]string{"version"}).Return(newMockCmd([]byte("go version "+testCase.mockVersion+
+					" linux/amd64\n"), nil)).Once()
+			}
+
+			verifier := NewVerifier(mockFS, mockExecutor)
+			err := verifier.Verify(testCase.installDir)
+
+			if testCase.expectedError == "" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), testCase.expectedError)
+			}
+		})
+	}
 }
 
-func TestRunCommand(t *testing.T) {
+func TestRunVerify(t *testing.T) {
 	t.Parallel()
-	// RunCommand just calls Verify, so same issue.
-	t.Skip("RunCommand calls Verify which calls os.Exit")
+
+	tests := []struct {
+		name          string
+		verifyDir     string
+		expectedError string
+	}{
+		{
+			name:          "successful verification",
+			verifyDir:     "/usr/local/go",
+			expectedError: "",
+		},
+		{
+			name:          "verification fails",
+			verifyDir:     "/nonexistent/go",
+			expectedError: "",
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := RunVerify(testCase.verifyDir)
+
+			if testCase.expectedError == "" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), testCase.expectedError)
+			}
+		})
+	}
 }
 
 func TestVerificationError_Error(t *testing.T) {

@@ -10,5 +10,5 @@ var (
 	ErrVersionParseError = errors.New("version parse error")
 
 	// ErrFailedToCreateEncoder is returned when creating a JSON encoder fails.
-	ErrFailedToCreateEncoder = errors.New("failed to create JSON encoder: encoder is nil")
+	ErrFailedToCreateEncoder = errors.New("failed to create JSON encoder")
 )

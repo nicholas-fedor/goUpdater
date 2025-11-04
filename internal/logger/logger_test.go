@@ -194,60 +194,65 @@ func TestDebug(t *testing.T) {
 	}
 }
 
-func TestInfof(t *testing.T) {
+func TestLoggingFunctions(t *testing.T) {
 	t.Parallel()
 
-	SetVerbose(false)
+	tests := []struct {
+		name     string
+		verbose  bool
+		callType string
+		expected string
+	}{
+		{
+			name:     "Infof",
+			verbose:  false,
+			callType: "Infof",
+			expected: "test infof 123\n",
+		},
+		{
+			name:     "Errorf",
+			verbose:  false,
+			callType: "Errorf",
+			expected: "Error: test errorf 456\n",
+		},
+		{
+			name:     "Warnf",
+			verbose:  false,
+			callType: "Warnf",
+			expected: "Warning: test warnf 789\n",
+		},
+		{
+			name:     "Debugf",
+			verbose:  true,
+			callType: "Debugf",
+			expected: "Debug: test debugf 101\n",
+		},
+	}
 
-	buf := &bytes.Buffer{}
-	SetWriter(buf)
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
 
-	Infof("test %s %d", "infof", 123)
+			SetVerbose(testCase.verbose)
 
-	output := stripTimestamp(stripANSI(buf.String()))
-	assert.Contains(t, output, "test infof 123\n")
-}
+			buf := &bytes.Buffer{}
+			SetWriter(buf)
 
-func TestErrorf(t *testing.T) {
-	t.Parallel()
+			switch testCase.callType {
+			case "Infof":
+				Infof("test %s %d", "infof", 123)
+			case "Errorf":
+				Errorf("test %s %d", "errorf", 456)
+			case "Warnf":
+				Warnf("test %s %d", "warnf", 789)
+			case "Debugf":
+				Debugf("test %s %d", "debugf", 101)
+			}
 
-	SetVerbose(false)
-
-	buf := &bytes.Buffer{}
-	SetWriter(buf)
-
-	Errorf("test %s %d", "errorf", 456)
-
-	output := stripTimestamp(stripANSI(buf.String()))
-	assert.Contains(t, output, "Error: test errorf 456\n")
-}
-
-func TestWarnf(t *testing.T) {
-	t.Parallel()
-
-	SetVerbose(false)
-
-	buf := &bytes.Buffer{}
-	SetWriter(buf)
-
-	Warnf("test %s %d", "warnf", 789)
-
-	output := stripTimestamp(stripANSI(buf.String()))
-	assert.Contains(t, output, "Warning: test warnf 789\n")
-}
-
-func TestDebugf(t *testing.T) {
-	t.Parallel()
-
-	SetVerbose(true)
-
-	buf := &bytes.Buffer{}
-	SetWriter(buf)
-
-	Debugf("test %s %d", "debugf", 101)
-
-	output := stripTimestamp(stripANSI(buf.String()))
-	assert.Contains(t, output, "Debug: test debugf 101\n")
+			output := stripTimestamp(stripANSI(buf.String()))
+			assert.Contains(t, output, testCase.expected)
+		})
+	}
 }
 
 func TestSetVerbose(t *testing.T) {

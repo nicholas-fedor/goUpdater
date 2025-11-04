@@ -208,6 +208,11 @@ func TestRequestElevation(t *testing.T) { //nolint:gocognit,nestif,cyclop,lll,no
 				setupSudoMocks(testCase, mockFS, mockPM)
 			}
 
+			// Mock Args() for test cases that require argument sanitization
+			if len(testCase.args) > 0 {
+				mockPM.EXPECT().Args().Return(append([]string{"test"}, testCase.args...))
+			}
+
 			switch {
 			case testCase.expectExec:
 				mockLogger.EXPECT().LogElevationAttempt(true, "attempting sudo elevation")
@@ -233,7 +238,7 @@ func TestRequestElevation(t *testing.T) { //nolint:gocognit,nestif,cyclop,lll,no
 				// No logging expectation needed here
 			}
 
-			err := privilegeManager.requestElevation()
+			err := RequestElevationWithManager(privilegeManager)
 			if testCase.expectError {
 				require.Error(t, err)
 
@@ -678,20 +683,56 @@ func TestOSPrivilegeManagerImpl(t *testing.T) {
 		assert.Contains(t, env[0], "=") // Environment variables have format KEY=VALUE
 	})
 }
+
+// setupDropMocks sets up mock expectations for privilege drop operations based on test case conditions.
+// It mirrors the conditional logic for Setgid, Setuid, LogPrivilegeDrop, and LogPrivilegeChange expectations.
+func setupDropMocks(
+	t *testing.T,
+	mockLogger *mockPrivileges.MockAuditLogger,
+	mockPM *mockPrivileges.MockOSPrivilegeManager,
+	testCase dropPrivilegesTestCase,
+) {
+	t.Helper()
+
+	shouldDrop := testCase.isRoot && testCase.isElevated && testCase.sudoUID == "1000" && testCase.sudoGID == "1000"
+	if !shouldDrop {
+		return
+	}
+
+	mockLogger.EXPECT().LogPrivilegeDrop(true, 1000, "dropping privileges to original user")
+	mockPM.EXPECT().Setgid(1000).Return(testCase.setgidErr)
+
+	if testCase.setgidErr != nil {
+		mockLogger.EXPECT().LogPrivilegeDrop(false, 1000, "failed to drop group privileges")
+
+		return
+	}
+
+	mockPM.EXPECT().Setuid(1000).Return(testCase.setuidErr)
+
+	if testCase.setuidErr != nil {
+		mockLogger.EXPECT().LogPrivilegeDrop(false, 1000, "failed to drop user privileges")
+	} else {
+		mockLogger.EXPECT().LogPrivilegeChange("drop", 0, 1000, "dropped privileges to original user")
+	}
+}
+
+type dropPrivilegesTestCase struct {
+	name        string
+	isRoot      bool
+	isElevated  bool
+	sudoUID     string
+	sudoGID     string
+	setgidErr   error
+	setuidErr   error
+	expectError bool
+	errorType   error
+}
+
 func TestDropPrivileges(t *testing.T) { //nolint:gocognit,nestif,cyclop,lll,nolintlint // complex test setup for privilege drop scenarios
 	t.Parallel()
 
-	tests := []struct {
-		name        string
-		isRoot      bool
-		isElevated  bool
-		sudoUID     string
-		sudoGID     string
-		setgidErr   error
-		setuidErr   error
-		expectError bool
-		errorType   error
-	}{
+	tests := []dropPrivilegesTestCase{
 		{
 			name:        "not root - no drop needed",
 			isRoot:      false,
@@ -790,29 +831,7 @@ func TestDropPrivileges(t *testing.T) { //nolint:gocognit,nestif,cyclop,lll,noli
 				return 1000
 			}())
 
-			shouldDrop := testCase.isRoot && testCase.isElevated && testCase.sudoUID == "1000" && testCase.sudoGID == "1000"
-			if !shouldDrop {
-				goto afterDropSetup
-			}
-
-			mockLogger.EXPECT().LogPrivilegeDrop(true, 1000, "dropping privileges to original user")
-			mockPM.EXPECT().Setgid(1000).Return(testCase.setgidErr)
-
-			if testCase.setgidErr != nil {
-				mockLogger.EXPECT().LogPrivilegeDrop(false, 1000, "failed to drop group privileges")
-
-				goto afterDropSetup
-			}
-
-			mockPM.EXPECT().Setuid(1000).Return(testCase.setuidErr)
-
-			if testCase.setuidErr != nil {
-				mockLogger.EXPECT().LogPrivilegeDrop(false, 1000, "failed to drop user privileges")
-			} else {
-				mockLogger.EXPECT().LogPrivilegeChange("drop", 0, 1000, "dropped privileges to original user")
-			}
-
-		afterDropSetup:
+			setupDropMocks(t, mockLogger, mockPM, testCase)
 
 			// Set up environment variables
 			originalSudoUser := os.Getenv("SUDO_USER")

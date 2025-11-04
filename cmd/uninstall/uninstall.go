@@ -6,10 +6,15 @@
 package uninstall
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/nicholas-fedor/goUpdater/internal/privileges"
 	"github.com/nicholas-fedor/goUpdater/internal/uninstall"
 	"github.com/spf13/cobra"
 )
+
+var errInstallDirEmpty = errors.New("install directory cannot be empty")
 
 // NewUninstallCmd creates the uninstall command.
 func NewUninstallCmd() *cobra.Command {
@@ -19,10 +24,22 @@ func NewUninstallCmd() *cobra.Command {
 		Long: `Uninstall Go by removing the installation directory.
 By default, this removes Go from /usr/local/go.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			installDir, _ := cmd.Flags().GetString("install-dir")
+			installDir, err := cmd.Flags().GetString("install-dir")
+			if err != nil {
+				return fmt.Errorf("failed to get install-dir flag: %w", err)
+			}
+
+			if installDir == "" {
+				return fmt.Errorf("%w", errInstallDirEmpty)
+			}
 
 			return privileges.ElevateAndExecute(func() error {
-				return uninstall.RunUninstall(installDir)
+				err := uninstall.RunUninstall(installDir)
+				if errors.Is(err, uninstall.ErrInstallDirEmpty) {
+					return fmt.Errorf("%w", errInstallDirEmpty)
+				}
+
+				return fmt.Errorf("uninstall failed: %w", err)
 			})
 		},
 	}

@@ -55,12 +55,7 @@ func (m *mockFile) Write(p []byte) (int, error) {
 func (m *mockFile) Close() error {
 	args := m.Called()
 
-	err := args.Error(0)
-	if err != nil {
-		return fmt.Errorf("mock error: %w", err)
-	}
-
-	return nil
+	return args.Error(0) //nolint:wrapcheck
 }
 
 func (m *mockFile) EXPECT() *mockFileExpecter {
@@ -106,12 +101,14 @@ func (e *mockProcessorExpecter) NewTarReader(r interface{}) *mock.Call {
 
 func (m *mockProcessor) NewGzipReader(r io.Reader) (io.ReadCloser, error) {
 	args := m.Called(r)
+
+	err := args.Error(1)
 	if args.Get(0) == nil {
-		return nil, fmt.Errorf("mock error: %w", args.Error(1))
+		return nil, err //nolint:wrapcheck
 	}
 
 	if reader, ok := args.Get(0).(io.ReadCloser); ok {
-		return reader, fmt.Errorf("mock error: %w", args.Error(1))
+		return reader, err //nolint:wrapcheck
 	}
 
 	return nil, errors.New("mock setup error") //nolint:err113
@@ -154,12 +151,22 @@ func (e *mockTarReaderExpecter) Read(p interface{}) *mock.Call {
 
 func (m *mockTarReader) Next() (*tar.Header, error) {
 	args := m.Called()
+
+	err := args.Error(1)
 	if args.Get(0) == nil {
-		return nil, fmt.Errorf("mock error: %w", args.Error(1))
+		if err != nil {
+			return nil, err //nolint:wrapcheck // mock returns raw error as configured
+		}
+
+		return nil, nil //nolint:nilnil // valid for tar.Reader.Next() EOF case
 	}
 
 	if header, ok := args.Get(0).(*tar.Header); ok {
-		return header, fmt.Errorf("mock error: %w", args.Error(1))
+		if err != nil {
+			return header, err //nolint:wrapcheck // mock returns raw error as configured
+		}
+
+		return header, nil
 	}
 
 	return nil, errors.New("mock setup error") //nolint:err113
@@ -173,41 +180,36 @@ func (m *mockTarReader) Read(p []byte) (int, error) {
 
 // mockGzipReader implements io.ReadCloser for testing.
 
-type mockGzipReader struct { //nolint:unused
+type mockGzipReader struct {
 	mock.Mock
 }
 
-func (m *mockGzipReader) EXPECT() *mockGzipReaderExpecter { //nolint:unused
+func (m *mockGzipReader) EXPECT() *mockGzipReaderExpecter {
 	return &mockGzipReaderExpecter{mock: &m.Mock}
 }
 
-type mockGzipReaderExpecter struct { //nolint:unused
+type mockGzipReaderExpecter struct {
 	mock *mock.Mock
 }
 
-func (e *mockGzipReaderExpecter) Read(p interface{}) *mock.Call { //nolint:unused
+func (e *mockGzipReaderExpecter) Read(p interface{}) *mock.Call {
 	return e.mock.On("Read", p)
 }
 
-func (e *mockGzipReaderExpecter) Close() *mock.Call { //nolint:unused
+func (e *mockGzipReaderExpecter) Close() *mock.Call {
 	return e.mock.On("Close")
 }
 
-func (m *mockGzipReader) Read(p []byte) (int, error) { //nolint:unused
+func (m *mockGzipReader) Read(p []byte) (int, error) {
 	args := m.Called(p)
 
 	return args.Int(0), args.Error(1)
 }
 
-func (m *mockGzipReader) Close() error { //nolint:unused
+func (m *mockGzipReader) Close() error {
 	args := m.Called()
 
-	err := args.Error(0)
-	if err != nil {
-		return fmt.Errorf("mock error: %w", err)
-	}
-
-	return nil
+	return args.Error(0) //nolint:wrapcheck
 }
 
 func TestNewExtractor(t *testing.T) {
@@ -223,7 +225,7 @@ func TestNewExtractor(t *testing.T) {
 	assert.Equal(t, mockProcessor, extractor.processor)
 }
 
-func TestExtractor_Extract(t *testing.T) {
+func TestExtractor_Extract(t *testing.T) { //nolint:maintidx
 	t.Parallel()
 
 	tests := []struct {
@@ -248,7 +250,7 @@ func TestExtractor_Extract(t *testing.T) {
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp/dest",
 				Context:     "creating gzip reader",
-				Err:         fmt.Errorf("mock error: %w", errGzipError),
+				Err:         errGzipError,
 			},
 			isWrapped: true,
 		},
@@ -296,80 +298,139 @@ func TestExtractor_Extract(t *testing.T) {
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp/dest",
 				Context:     "creating gzip reader",
-				Err:         fmt.Errorf("mock error: %w", errGzipError),
+				Err:         errGzipError,
 			},
 		},
 		{
 			name: "tar header read failure",
-			setupMocks: func(filesystem *mockFilesystem.MockFileSystem, processor *mockProcessor, _ *mockTarReader) {
+			setupMocks: func(filesystem *mockFilesystem.MockFileSystem, processor *mockProcessor, tarReader *mockTarReader) {
 				filesystem.EXPECT().Stat("archive.tar.gz").Return(&mockFileInfo{name: "archive.tar.gz", mode: 0644}, nil)
 
 				mockFile := &mockFile{}
 				filesystem.EXPECT().Open("archive.tar.gz").Return(mockFile, nil)
 				mockFile.EXPECT().Close().Return(nil)
-				processor.EXPECT().NewGzipReader(mockFile).Return(nil, errGzipError)
+
+				gzipReader := &mockGzipReader{}
+				processor.EXPECT().NewGzipReader(mockFile).Return(gzipReader, nil)
+				gzipReader.EXPECT().Close().Return(nil)
+				processor.EXPECT().NewTarReader(gzipReader).Return(tarReader)
+				tarReader.EXPECT().Next().Return(nil, errGzipError)
 			},
 			wantErr: true,
 			expectedErr: &ExtractionError{
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp/dest",
-				Context:     "creating gzip reader",
-				Err:         fmt.Errorf("mock error: %w", errGzipError),
+				Context:     "reading tar header",
+				Err:         errGzipError,
 			},
 		},
 		{
 			name: "too many files",
-			setupMocks: func(filesystem *mockFilesystem.MockFileSystem, processor *mockProcessor, _ *mockTarReader) {
+			setupMocks: func(filesystem *mockFilesystem.MockFileSystem, processor *mockProcessor, tarReader *mockTarReader) {
 				filesystem.EXPECT().Stat("archive.tar.gz").Return(&mockFileInfo{name: "archive.tar.gz", mode: 0644}, nil)
 
-				mockFile := &mockFile{}
-				filesystem.EXPECT().Open("archive.tar.gz").Return(mockFile, nil)
-				mockFile.EXPECT().Close().Return(nil)
-				processor.EXPECT().NewGzipReader(mockFile).Return(nil, errGzipError)
+				archiveFile := &mockFile{}
+				filesystem.EXPECT().Open("archive.tar.gz").Return(archiveFile, nil)
+				archiveFile.EXPECT().Close().Return(nil)
+
+				gzipReader := &mockGzipReader{}
+				processor.EXPECT().NewGzipReader(archiveFile).Return(gzipReader, nil)
+				gzipReader.EXPECT().Close().Return(nil)
+				processor.EXPECT().NewTarReader(gzipReader).Return(tarReader)
+
+				for fileIndex := range 6 {
+					tarReader.EXPECT().Next().Return(&tar.Header{
+						Name:     fmt.Sprintf("file%d", fileIndex),
+						Typeflag: tar.TypeReg,
+						Mode:     0644,
+					}, nil)
+				}
+
+				for fileIndex := range 5 {
+					filePath := fmt.Sprintf("/tmp/dest/file%d", fileIndex)
+					filesystem.EXPECT().EvalSymlinks(filePath).Return(filePath, nil)
+					filesystem.EXPECT().MkdirAll("/tmp/dest", os.FileMode(0755)).Return(nil)
+
+					mockFile2 := &mockFile{}
+					filesystem.EXPECT().OpenFile(filePath,
+						os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(0644)).Return(mockFile2, nil)
+					mockFile2.EXPECT().Close().Return(nil)
+					filesystem.EXPECT().Chmod(filePath, os.FileMode(0644)).Return(nil)
+				}
+
+				tarReader.EXPECT().Read(mock.Anything).Return(0, io.EOF).Times(5)
 			},
 			wantErr: true,
 			expectedErr: &ExtractionError{
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp/dest",
-				Context:     "creating gzip reader",
-				Err:         fmt.Errorf("mock error: %w", errGzipError),
+				Context:     "validating file count",
+				Err:         fmt.Errorf("archive contains too many files: %w", ErrTooManyFiles),
 			},
+			isWrapped: true,
 		},
 		{
 			name: "file too large",
-			setupMocks: func(filesystem *mockFilesystem.MockFileSystem, processor *mockProcessor, _ *mockTarReader) {
+			setupMocks: func(filesystem *mockFilesystem.MockFileSystem, processor *mockProcessor, tarReader *mockTarReader) {
 				filesystem.EXPECT().Stat("archive.tar.gz").Return(&mockFileInfo{name: "archive.tar.gz", mode: 0644}, nil)
 
 				mockFile := &mockFile{}
 				filesystem.EXPECT().Open("archive.tar.gz").Return(mockFile, nil)
 				mockFile.EXPECT().Close().Return(nil)
-				processor.EXPECT().NewGzipReader(mockFile).Return(nil, errGzipError)
+
+				gzipReader := &mockGzipReader{}
+				processor.EXPECT().NewGzipReader(mockFile).Return(gzipReader, nil)
+				gzipReader.EXPECT().Close().Return(nil)
+				processor.EXPECT().NewTarReader(gzipReader).Return(tarReader)
+				tarReader.EXPECT().Next().Return(&tar.Header{
+					Name: "largefile", Size: 60 * 1024 * 1024, Typeflag: tar.TypeReg,
+				}, nil).Once()
 			},
 			wantErr: true,
 			expectedErr: &ExtractionError{
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp/dest",
-				Context:     "creating gzip reader",
-				Err:         fmt.Errorf("mock error: %w", errGzipError),
+				Context:     "validating file size",
+				Err:         fmt.Errorf("archive contains file too large: largefile (62914560 bytes): %w", ErrFileTooLarge),
 			},
+			isWrapped: true,
 		},
 		{
 			name: "total size too large",
-			setupMocks: func(filesystem *mockFilesystem.MockFileSystem, processor *mockProcessor, _ *mockTarReader) {
+			setupMocks: func(filesystem *mockFilesystem.MockFileSystem, processor *mockProcessor, tarReader *mockTarReader) {
 				filesystem.EXPECT().Stat("archive.tar.gz").Return(&mockFileInfo{name: "archive.tar.gz", mode: 0644}, nil)
 
-				mockFile := &mockFile{}
-				filesystem.EXPECT().Open("archive.tar.gz").Return(mockFile, nil)
-				mockFile.EXPECT().Close().Return(nil)
-				processor.EXPECT().NewGzipReader(mockFile).Return(nil, errGzipError)
+				archiveFile := &mockFile{}
+				filesystem.EXPECT().Open("archive.tar.gz").Return(archiveFile, nil)
+				archiveFile.EXPECT().Close().Return(nil)
+
+				gzipReader := &mockGzipReader{}
+				processor.EXPECT().NewGzipReader(archiveFile).Return(gzipReader, nil)
+				gzipReader.EXPECT().Close().Return(nil)
+				processor.EXPECT().NewTarReader(gzipReader).Return(tarReader)
+				tarReader.EXPECT().Next().Return(&tar.Header{
+					Name: "file", Size: 1 * 1024 * 1024, Typeflag: tar.TypeReg, Mode: 0644,
+				}, nil).Times(11)
+				filesystem.EXPECT().EvalSymlinks("/tmp/dest/file").Return("/tmp/dest/file", nil).Times(11)
+				filesystem.EXPECT().MkdirAll("/tmp/dest", os.FileMode(0755)).Return(nil).Times(10)
+
+				fileMock := &mockFile{}
+				filesystem.EXPECT().OpenFile("/tmp/dest/file",
+					os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(0644)).Return(fileMock, nil).Times(10)
+				tarReader.EXPECT().Read(mock.Anything).Return(1*1024*1024, nil).Times(11)
+				tarReader.EXPECT().Read(mock.Anything).Return(0, io.EOF).Times(11)
+				fileMock.EXPECT().Write(mock.Anything).Return(1*1024*1024, nil).Times(11)
+				fileMock.EXPECT().Close().Return(nil).Times(10)
+				filesystem.EXPECT().Chmod("/tmp/dest/file", os.FileMode(0644)).Return(nil).Times(10)
 			},
 			wantErr: true,
 			expectedErr: &ExtractionError{
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp/dest",
-				Context:     "creating gzip reader",
-				Err:         fmt.Errorf("mock error: %w", errGzipError),
+				Context:     "validating total size",
+				Err:         fmt.Errorf("archive total size too large: 11534336 bytes: %w", ErrFileTooLarge),
 			},
+			isWrapped: true,
 		},
 	}
 
@@ -383,12 +444,21 @@ func TestExtractor_Extract(t *testing.T) {
 
 			testCase.setupMocks(mockFS, mockProcessor, mockTarReader)
 
-			e := &Extractor{
-				fs:        mockFS,
-				processor: mockProcessor,
+			extractor := &Extractor{
+				fs:           mockFS,
+				processor:    mockProcessor,
+				maxFiles:     5,
+				maxTotalSize: 10 * 1024 * 1024, // 10MB for testing
+				maxFileSize:  1 * 1024 * 1024,  // 1MB per file for testing
+				bufferSize:   1 * 1024 * 1024,  // 1MB buffer for testing
 			}
 
-			err := e.Extract("archive.tar.gz", "/tmp/dest")
+			// Set maxFiles high enough for tests that need to hit other limits
+			if testCase.name == "file too large" || testCase.name == "total size too large" {
+				extractor.maxFiles = 100
+			}
+
+			err := extractor.Extract("archive.tar.gz", "/tmp/dest")
 
 			if !testCase.wantErr {
 				require.NoError(t, err)
@@ -489,12 +559,16 @@ func TestExtractor_Validate(t *testing.T) {
 
 			testCase.setupMocks(mockFS)
 
-			e := &Extractor{
-				fs:        mockFS,
-				processor: mockProcessor,
+			extractor := &Extractor{
+				fs:           mockFS,
+				processor:    mockProcessor,
+				maxFiles:     5,
+				maxTotalSize: 10 * 1024 * 1024, // 10MB for testing
+				maxFileSize:  1 * 1024 * 1024,  // 1MB per file for testing
+				bufferSize:   1 * 1024 * 1024,  // 1MB buffer for testing
 			}
 
-			err := e.Validate(testCase.archivePath, "/tmp/dest")
+			err := extractor.Validate(testCase.archivePath, "/tmp/dest")
 
 			if !testCase.wantErr {
 				require.NoError(t, err)
@@ -648,7 +722,8 @@ func TestExtractor_processTarEntry(t *testing.T) {
 				filesystem.EXPECT().MkdirAll("/tmp/dest", os.FileMode(0755)).Return(nil)
 
 				mockFile := &mockFile{}
-				filesystem.EXPECT().OpenFile("/tmp/dest/file.txt", os.O_CREATE|os.O_WRONLY, os.FileMode(0644)).Return(mockFile, nil)
+				filesystem.EXPECT().OpenFile("/tmp/dest/file.txt",
+					os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(0644)).Return(mockFile, nil)
 				tarReader.EXPECT().Read(mock.Anything).Return(100, nil).Once()
 				tarReader.EXPECT().Read(mock.Anything).Return(0, io.EOF).Once()
 				mockFile.EXPECT().Write(mock.Anything).Return(100, nil).Once()
@@ -707,12 +782,16 @@ func TestExtractor_processTarEntry(t *testing.T) {
 
 			testCase.setupMocks(mockFS, mockTarReader)
 
-			e := &Extractor{
-				fs:        mockFS,
-				processor: mockProcessor,
+			extractor := &Extractor{
+				fs:           mockFS,
+				processor:    mockProcessor,
+				maxFiles:     5,
+				maxTotalSize: 10 * 1024 * 1024, // 10MB for testing
+				maxFileSize:  1 * 1024 * 1024,  // 1MB per file for testing
+				bufferSize:   1 * 1024 * 1024,  // 1MB buffer for testing
 			}
 
-			err := e.processTarEntry(mockTarReader, testCase.header, testCase.destDir, "archive.tar.gz")
+			err := extractor.processTarEntry(mockTarReader, testCase.header, testCase.destDir, "archive.tar.gz")
 
 			if !testCase.wantErr {
 				require.NoError(t, err)
@@ -792,12 +871,21 @@ func TestExtractor_extractDirectory(t *testing.T) {
 
 			testCase.setupMocks(mockFS)
 
-			e := &Extractor{
-				fs:        mockFS,
-				processor: mockProcessor,
+			extractor := &Extractor{
+				fs:           mockFS,
+				processor:    mockProcessor,
+				maxFiles:     5,
+				maxTotalSize: 10 * 1024 * 1024, // 10MB for testing
+				maxFileSize:  1 * 1024 * 1024,  // 1MB per file for testing
+				bufferSize:   1 * 1024 * 1024,  // 1MB buffer for testing
 			}
 
-			err := e.extractDirectory(testCase.targetPath, testCase.mode)
+			// Set maxFiles high enough for tests that need to hit other limits
+			if testCase.name == "file too large" || testCase.name == "total size too large" {
+				extractor.maxFiles = 100
+			}
+
+			err := extractor.extractDirectory(testCase.targetPath, testCase.mode)
 
 			if testCase.wantErr {
 				require.Error(t, err)
@@ -833,8 +921,9 @@ func TestExtractor_extractRegularFile(t *testing.T) {
 				filesystem.EXPECT().MkdirAll("/tmp", os.FileMode(0755)).Return(nil)
 
 				mockFile := &mockFile{}
-				filesystem.EXPECT().OpenFile("/tmp/testfile.txt", os.O_CREATE|os.O_WRONLY, os.FileMode(0644)).Return(mockFile, nil)
-				tarReader.EXPECT().Read(mock.Anything).Return(100, nil).Once().Once()
+				filesystem.EXPECT().OpenFile("/tmp/testfile.txt",
+					os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(0644)).Return(mockFile, nil)
+				tarReader.EXPECT().Read(mock.Anything).Return(100, nil).Once()
 				tarReader.EXPECT().Read(mock.Anything).Return(0, io.EOF).Once()
 				mockFile.EXPECT().Write(mock.Anything).Return(100, nil).Once()
 				mockFile.EXPECT().Close().Return(nil)
@@ -860,7 +949,7 @@ func TestExtractor_extractRegularFile(t *testing.T) {
 			setupMocks: func(filesystem *mockFilesystem.MockFileSystem, _ *mockTarReader) {
 				filesystem.EXPECT().MkdirAll("/tmp", os.FileMode(0755)).Return(nil)
 				filesystem.EXPECT().OpenFile("/tmp/testfile.txt",
-					os.O_CREATE|os.O_WRONLY, os.FileMode(0644)).Return(nil, os.ErrPermission)
+					os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(0644)).Return(nil, os.ErrPermission)
 			},
 			wantErr:     true,
 			expectedErr: fmt.Errorf("open file failed: %w", os.ErrPermission),
@@ -873,7 +962,8 @@ func TestExtractor_extractRegularFile(t *testing.T) {
 				filesystem.EXPECT().MkdirAll("/tmp", os.FileMode(0755)).Return(nil)
 
 				mockFile := &mockFile{}
-				filesystem.EXPECT().OpenFile("/tmp/testfile.txt", os.O_CREATE|os.O_WRONLY, os.FileMode(0644)).Return(mockFile, nil)
+				filesystem.EXPECT().OpenFile("/tmp/testfile.txt",
+					os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(0644)).Return(mockFile, nil)
 				tarReader.EXPECT().Read(mock.Anything).Return(0, io.ErrUnexpectedEOF).Once()
 				mockFile.EXPECT().Close().Return(nil)
 			},
@@ -888,14 +978,15 @@ func TestExtractor_extractRegularFile(t *testing.T) {
 				filesystem.EXPECT().MkdirAll("/tmp", os.FileMode(0755)).Return(nil)
 
 				mockFile := &mockFile{}
-				filesystem.EXPECT().OpenFile("/tmp/testfile.txt", os.O_CREATE|os.O_WRONLY, os.FileMode(0644)).Return(mockFile, nil)
-				tarReader.EXPECT().Read(mock.Anything).Return(100, nil).Once().Once()
+				filesystem.EXPECT().OpenFile("/tmp/testfile.txt",
+					os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(0644)).Return(mockFile, nil)
+				tarReader.EXPECT().Read(mock.Anything).Return(100, nil).Once()
 				tarReader.EXPECT().Read(mock.Anything).Return(0, io.EOF).Once()
 				mockFile.EXPECT().Write(mock.Anything).Return(100, nil).Once()
 				mockFile.EXPECT().Close().Return(os.ErrPermission)
 			},
 			wantErr:     true,
-			expectedErr: fmt.Errorf("close failed: %w", fmt.Errorf("mock error: %w", os.ErrPermission)),
+			expectedErr: fmt.Errorf("close failed: %w", os.ErrPermission),
 		},
 		{
 			name:       "chmod failure",
@@ -905,8 +996,9 @@ func TestExtractor_extractRegularFile(t *testing.T) {
 				filesystem.EXPECT().MkdirAll("/tmp", os.FileMode(0755)).Return(nil)
 
 				mockFile := &mockFile{}
-				filesystem.EXPECT().OpenFile("/tmp/testfile.txt", os.O_CREATE|os.O_WRONLY, os.FileMode(0644)).Return(mockFile, nil)
-				tarReader.EXPECT().Read(mock.Anything).Return(100, nil).Once().Once()
+				filesystem.EXPECT().OpenFile("/tmp/testfile.txt",
+					os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(0644)).Return(mockFile, nil)
+				tarReader.EXPECT().Read(mock.Anything).Return(100, nil).Once()
 				tarReader.EXPECT().Read(mock.Anything).Return(0, io.EOF).Once()
 				mockFile.EXPECT().Write(mock.Anything).Return(100, nil).Once()
 				mockFile.EXPECT().Close().Return(nil)
@@ -927,12 +1019,16 @@ func TestExtractor_extractRegularFile(t *testing.T) {
 
 			testCase.setupMocks(mockFS, mockTarReader)
 
-			e := &Extractor{
-				fs:        mockFS,
-				processor: mockProcessor,
+			extractor := &Extractor{
+				fs:           mockFS,
+				processor:    mockProcessor,
+				maxFiles:     5,
+				maxTotalSize: 10 * 1024 * 1024, // 10MB for testing
+				maxFileSize:  1 * 1024 * 1024,  // 1MB per file for testing
+				bufferSize:   1 * 1024 * 1024,  // 1MB buffer for testing
 			}
 
-			err := e.extractRegularFile(mockTarReader, testCase.targetPath, testCase.mode)
+			err := extractor.extractRegularFile(mockTarReader, testCase.targetPath, testCase.mode)
 
 			if testCase.wantErr {
 				require.Error(t, err)
@@ -988,7 +1084,7 @@ func TestExtractor_extractSymlink(t *testing.T) {
 			expectedErr: &ExtractionError{
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp",
-				Context:     "validating header name",
+				Context:     "validating symlink target",
 				Err: &SecurityError{
 					AttemptedPath: "/absolute/path",
 					Validation:    "absolute path prevention",
@@ -1009,7 +1105,7 @@ func TestExtractor_extractSymlink(t *testing.T) {
 			expectedErr: &ExtractionError{
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp",
-				Context:     "validating header name",
+				Context:     "validating symlink target",
 				Err: &SecurityError{
 					AttemptedPath: "../escape",
 					Validation:    "parent directory reference prevention",
@@ -1030,7 +1126,7 @@ func TestExtractor_extractSymlink(t *testing.T) {
 			expectedErr: &ExtractionError{
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp",
-				Context:     "validating header name",
+				Context:     "validating symlink target",
 				Err: &SecurityError{
 					AttemptedPath: "file\\with\\backslash",
 					Validation:    "backslash prevention",
@@ -1051,7 +1147,7 @@ func TestExtractor_extractSymlink(t *testing.T) {
 			expectedErr: &ExtractionError{
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp",
-				Context:     "validating header name",
+				Context:     "validating symlink target",
 				Err: &SecurityError{
 					AttemptedPath: "file\x00null",
 					Validation:    "null byte prevention",
@@ -1072,7 +1168,7 @@ func TestExtractor_extractSymlink(t *testing.T) {
 			expectedErr: &ExtractionError{
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp",
-				Context:     "validating header name",
+				Context:     "validating symlink target",
 				Err: &SecurityError{
 					AttemptedPath: "../../../outside",
 					Validation:    "parent directory reference prevention",
@@ -1093,7 +1189,7 @@ func TestExtractor_extractSymlink(t *testing.T) {
 			expectedErr: &ExtractionError{
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp",
-				Context:     "validating header name",
+				Context:     "validating symlink target",
 				Err: &SecurityError{
 					AttemptedPath: "etc/passwd",
 					Validation:    "linkname destination check",
@@ -1116,7 +1212,7 @@ func TestExtractor_extractSymlink(t *testing.T) {
 			expectedErr: &ExtractionError{
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp",
-				Context:     "validating header name",
+				Context:     "validating symlink target",
 				Err: &SecurityError{
 					AttemptedPath: "symlink_target",
 					Validation:    "symlink chain validation",
@@ -1154,12 +1250,17 @@ func TestExtractor_extractSymlink(t *testing.T) {
 
 			testCase.setupMocks(mockFS)
 
-			e := &Extractor{
-				fs:        mockFS,
-				processor: mockProcessor,
+			extractor := &Extractor{
+				fs:           mockFS,
+				processor:    mockProcessor,
+				maxFiles:     5,
+				maxTotalSize: 10 * 1024 * 1024, // 10MB for testing
+				maxFileSize:  1 * 1024 * 1024,  // 1MB per file for testing
+				bufferSize:   1 * 1024 * 1024,  // 1MB buffer for testing
 			}
 
-			err := e.extractSymlink(testCase.targetPath, testCase.linkname, testCase.baseDir, testCase.destDir, "archive.tar.gz")
+			err := extractor.extractSymlink(testCase.targetPath, testCase.linkname,
+				testCase.baseDir, testCase.destDir, "archive.tar.gz")
 
 			if testCase.wantErr {
 				require.Error(t, err)
@@ -1215,7 +1316,7 @@ func TestExtractor_extractHardLink(t *testing.T) {
 			expectedErr: &ExtractionError{
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp",
-				Context:     "validating header name",
+				Context:     "validating linkname for hard link",
 				Err: &SecurityError{
 					AttemptedPath: "/absolute/path",
 					Validation:    "absolute path prevention",
@@ -1237,7 +1338,7 @@ func TestExtractor_extractHardLink(t *testing.T) {
 			expectedErr: &ExtractionError{
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp",
-				Context:     "validating header name",
+				Context:     "validating linkname for hard link",
 				Err: &SecurityError{
 					AttemptedPath: "../escape",
 					Validation:    "parent directory reference prevention",
@@ -1259,7 +1360,7 @@ func TestExtractor_extractHardLink(t *testing.T) {
 			expectedErr: &ExtractionError{
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp",
-				Context:     "validating header name",
+				Context:     "validating linkname for hard link",
 				Err: &SecurityError{
 					AttemptedPath: "file\\with\\backslash",
 					Validation:    "backslash prevention",
@@ -1281,7 +1382,7 @@ func TestExtractor_extractHardLink(t *testing.T) {
 			expectedErr: &ExtractionError{
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp",
-				Context:     "validating header name",
+				Context:     "validating linkname for hard link",
 				Err: &SecurityError{
 					AttemptedPath: "file\x00null",
 					Validation:    "null byte prevention",
@@ -1303,7 +1404,7 @@ func TestExtractor_extractHardLink(t *testing.T) {
 			expectedErr: &ExtractionError{
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp",
-				Context:     "validating header name",
+				Context:     "validating linkname for hard link",
 				Err: &SecurityError{
 					AttemptedPath: "../../../outside",
 					Validation:    "parent directory reference prevention",
@@ -1325,7 +1426,7 @@ func TestExtractor_extractHardLink(t *testing.T) {
 			expectedErr: &ExtractionError{
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp",
-				Context:     "validating header name",
+				Context:     "validating linkname for hard link",
 				Err: &SecurityError{
 					AttemptedPath: "etc/passwd",
 					Validation:    "linkname destination check",
@@ -1348,7 +1449,7 @@ func TestExtractor_extractHardLink(t *testing.T) {
 			expectedErr: &ExtractionError{
 				ArchivePath: "archive.tar.gz",
 				Destination: "/tmp",
-				Context:     "validating header name",
+				Context:     "validating linkname for hard link",
 				Err: &SecurityError{
 					AttemptedPath: "symlink_target",
 					Validation:    "symlink chain validation",
@@ -1392,12 +1493,16 @@ func TestExtractor_extractHardLink(t *testing.T) {
 
 			testCase.setupMocks(mockFS)
 
-			e := &Extractor{
-				fs:        mockFS,
-				processor: mockProcessor,
+			extractor := &Extractor{
+				fs:           mockFS,
+				processor:    mockProcessor,
+				maxFiles:     5,
+				maxTotalSize: 10 * 1024 * 1024, // 10MB for testing
+				maxFileSize:  1 * 1024 * 1024,  // 1MB per file for testing
+				bufferSize:   1 * 1024 * 1024,  // 1MB buffer for testing
 			}
 
-			err := e.extractHardLink(testCase.targetPath, testCase.linkname, testCase.baseDir,
+			err := extractor.extractHardLink(testCase.targetPath, testCase.linkname, testCase.baseDir,
 				testCase.destDir, "archive.tar.gz")
 
 			if !testCase.wantErr {
@@ -1460,7 +1565,8 @@ func TestExtractor_extractEntry(t *testing.T) {
 				filesystem.EXPECT().MkdirAll("/tmp", os.FileMode(0755)).Return(nil)
 
 				mockFile := &mockFile{}
-				filesystem.EXPECT().OpenFile("/tmp/file.txt", os.O_CREATE|os.O_WRONLY, os.FileMode(0644)).Return(mockFile, nil)
+				filesystem.EXPECT().OpenFile("/tmp/file.txt",
+					os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(0644)).Return(mockFile, nil)
 				tarReader.EXPECT().Read(mock.Anything).Return(100, nil).Once()
 				tarReader.EXPECT().Read(mock.Anything).Return(0, io.EOF).Once()
 				mockFile.EXPECT().Write(mock.Anything).Return(100, nil).Once()
@@ -1537,7 +1643,7 @@ func TestExtractor_extractEntry(t *testing.T) {
 			setupMocks: func(filesystem *mockFilesystem.MockFileSystem, _ *mockTarReader) {
 				filesystem.EXPECT().MkdirAll("/tmp", os.FileMode(0755)).Return(nil)
 				filesystem.EXPECT().OpenFile("/tmp/file.txt",
-					os.O_CREATE|os.O_WRONLY, os.FileMode(0644)).Return(nil, os.ErrPermission)
+					os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(0644)).Return(nil, os.ErrPermission)
 			},
 			wantErr: true,
 			expectedErr: &ExtractionError{
@@ -1560,12 +1666,17 @@ func TestExtractor_extractEntry(t *testing.T) {
 
 			testCase.setupMocks(mockFS, mockTarReader)
 
-			e := &Extractor{
-				fs:        mockFS,
-				processor: mockProcessor,
+			extractor := &Extractor{
+				fs:           mockFS,
+				processor:    mockProcessor,
+				maxFiles:     5,
+				maxTotalSize: 10 * 1024 * 1024, // 10MB for testing
+				maxFileSize:  1 * 1024 * 1024,  // 1MB per file for testing
+				bufferSize:   1 * 1024 * 1024,  // 1MB buffer for testing
 			}
 
-			err := e.extractEntry(mockTarReader, testCase.header, testCase.targetPath, testCase.baseDir, testCase.destDir,
+			err := extractor.extractEntry(mockTarReader, testCase.header, testCase.targetPath,
+				testCase.baseDir, testCase.destDir,
 				"archive.tar.gz")
 
 			if !testCase.wantErr {
@@ -1659,12 +1770,12 @@ func TestExtractor_validateSymlinkChain(t *testing.T) {
 
 			testCase.setupMocks(mockFS)
 
-			e := &Extractor{
+			extractor := &Extractor{
 				fs:        mockFS,
 				processor: mockProcessor,
 			}
 
-			err := e.validateSymlinkChain(testCase.resolved, testCase.destDir)
+			err := extractor.validateSymlinkChain(testCase.resolved, testCase.destDir)
 
 			if testCase.wantErr {
 				require.Error(t, err)
@@ -1749,12 +1860,12 @@ func TestExtractor_validateResolvedPath(t *testing.T) {
 
 			testCase.setupMocks(mockFS)
 
-			e := &Extractor{
+			extractor := &Extractor{
 				fs:        mockFS,
 				processor: mockProcessor,
 			}
 
-			err := e.validateResolvedPath(testCase.targetPath, testCase.destDir)
+			err := extractor.validateResolvedPath(testCase.targetPath, testCase.destDir)
 
 			if testCase.wantErr {
 				require.Error(t, err)
@@ -1920,12 +2031,12 @@ func TestExtractor_validateLinkname(t *testing.T) {
 
 			testCase.setupMocks(mockFS)
 
-			e := &Extractor{
+			extractor := &Extractor{
 				fs:        mockFS,
 				processor: mockProcessor,
 			}
 
-			err := e.validateLinkname(testCase.linkname, testCase.baseDir, testCase.destDir)
+			err := extractor.validateLinkname(testCase.linkname, testCase.baseDir, testCase.destDir)
 
 			if testCase.wantErr {
 				require.Error(t, err)

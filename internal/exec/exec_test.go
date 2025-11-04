@@ -184,15 +184,16 @@ func TestOSCommandExecutor_CommandContext(t *testing.T) {
 	}
 }
 
-func TestOSCommandExecutor_CommandContext_NilContext(t *testing.T) {
+func TestOSCommandExecutor_CommandContext_TODOContext(t *testing.T) {
 	t.Parallel()
 
 	executor := OSCommandExecutor{}
 
-	// Test with nil context - this should panic as per exec.CommandContext behavior
-	require.Panics(t, func() {
-		executor.CommandContext(nil, "echo", "test") //nolint:staticcheck // testing nil context causes panic
-	})
+	// Test with context.TODO() - this should not panic and return a valid command
+	cmd := executor.CommandContext(context.TODO(), "echo", "test")
+	require.NotNil(t, cmd)
+	require.Contains(t, cmd.Path(), "echo")
+	require.Equal(t, []string{"echo", "test"}, cmd.Args())
 }
 
 func TestOSCommandExecutor_CommandContext_EdgeCases(t *testing.T) {
@@ -318,11 +319,11 @@ func TestOSCommandExecutor_CommandContext_TimeoutScenarios(t *testing.T) {
 			expectPanic: false,
 		},
 		{
-			name:        "nil context should panic",
-			ctx:         nil,
+			name:        "context.TODO() should not panic",
+			ctx:         context.TODO(),
 			cmd:         "echo",
 			args:        []string{"test"},
-			expectPanic: true,
+			expectPanic: false,
 		},
 	}
 

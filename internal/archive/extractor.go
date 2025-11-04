@@ -20,14 +20,17 @@ const (
 	defaultDirPerm  = 0755 // Default directory permissions
 	defaultFilePerm = 0644 // Default file permissions
 	unixPermMask    = 0777 // Unix permission mask for tar headers
-	goBinaryPerm    = 0755 // Permissions for extracted go binary
 )
 
 // NewExtractor creates a new Extractor with the given dependencies.
 func NewExtractor(fs filesystem.FileSystem, processor Processor) *Extractor {
 	return &Extractor{
-		fs:        fs,
-		processor: processor,
+		fs:           fs,
+		processor:    processor,
+		maxFiles:     20000,             //nolint:mnd // 20000 is the standard limit for Go archives
+		maxTotalSize: 500 * 1024 * 1024, //nolint:mnd // 500MB limit (Go archives are ~196MB)
+		maxFileSize:  50 * 1024 * 1024,  //nolint:mnd // 50MB per file limit (largest Go file is ~20.6MB)
+		bufferSize:   10 * 1024 * 1024,  //nolint:mnd // 10MB buffer size for testing large file chunks
 	}
 }
 
@@ -76,11 +79,8 @@ func (e *Extractor) Extract(archivePath, destDir string) error {
 
 	// Limit the number of files to prevent zip bomb attacks
 	// Set to 20,000 to accommodate Go archives which contain ~16k files with generous buffer
-	const maxFiles = 20000
 	// Limit total extracted size to prevent zip bomb attacks
-	const maxTotalSize = 500 * 1024 * 1024 // 500MB limit (Go archives are ~196MB)
 	// Limit individual file size to prevent zip bomb attacks
-	const maxFileSize = 50 * 1024 * 1024 // 50MB per file limit (largest Go file is ~20.6MB)
 
 	fileCount := 0
 	totalSize := int64(0)
@@ -101,7 +101,7 @@ func (e *Extractor) Extract(archivePath, destDir string) error {
 		}
 
 		fileCount++
-		if fileCount > maxFiles {
+		if fileCount > e.maxFiles {
 			return &ExtractionError{
 				ArchivePath: archivePath,
 				Destination: destDir,
@@ -111,23 +111,23 @@ func (e *Extractor) Extract(archivePath, destDir string) error {
 		}
 
 		// Check for zip bomb: extremely large files or excessive total size
-		if header.Size > maxFileSize {
+		if header.Size > e.maxFileSize {
 			return &ExtractionError{
 				ArchivePath: archivePath,
 				Destination: destDir,
 				Context:     "validating file size",
 				Err: fmt.Errorf("archive contains file too large: %s (%d bytes): %w",
-					header.Name, header.Size, ErrTooManyFiles),
+					header.Name, header.Size, ErrFileTooLarge),
 			}
 		}
 
 		totalSize += header.Size
-		if totalSize > maxTotalSize {
+		if totalSize > e.maxTotalSize {
 			return &ExtractionError{
 				ArchivePath: archivePath,
 				Destination: destDir,
 				Context:     "validating total size",
-				Err:         fmt.Errorf("archive total size too large: %d bytes: %w", totalSize, ErrTooManyFiles),
+				Err:         fmt.Errorf("archive total size too large: %d bytes: %w", totalSize, ErrFileTooLarge),
 			}
 		}
 
@@ -188,7 +188,7 @@ func (e *Extractor) Validate(archivePath, destDir string) error {
 // It performs multiple layers of path validation including symlink resolution to prevent path traversal attacks.
 //
 //nolint:funlen // complex archive extraction with security validations
-func (e *Extractor) processTarEntry(tarReader TarReader, header *TarHeader, destDir, archivePath string) error {
+func (e *Extractor) processTarEntry(tarReader TarReader, header *tar.Header, destDir, archivePath string) error {
 	logger.Debugf("Processing tar entry: %s", header.Name)
 	// Validate the header name
 	err := validateHeaderName(header.Name)
@@ -306,13 +306,13 @@ func (e *Extractor) extractRegularFile(tarReader TarReader, targetPath string, m
 	}
 
 	// Create file permissively, then set correct permissions
-	file, err := e.fs.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY, defaultFilePerm) // #nosec G302
+	file, err := e.fs.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, defaultFilePerm) // #nosec G302
 	if err != nil {
 		return fmt.Errorf("open file failed: %w", err)
 	}
 
-	// Use buffered copy with 64KB buffer for better I/O performance
-	buffer := make([]byte, 64*1024) //nolint:mnd // 64KB buffer size is a reasonable constant for I/O operations
+	// Use buffered copy with configurable buffer for better I/O performance
+	buffer := make([]byte, e.bufferSize)
 
 	_, err = io.CopyBuffer(file, tarReader, buffer)
 	if err != nil {
@@ -343,7 +343,7 @@ func (e *Extractor) extractSymlink(targetPath, linkname, baseDir, destDir, archi
 		return &ExtractionError{
 			ArchivePath: archivePath,
 			Destination: destDir,
-			Context:     "validating header name",
+			Context:     "validating symlink target",
 			Err:         err,
 		}
 	}
@@ -365,7 +365,7 @@ func (e *Extractor) extractHardLink(targetPath, linkname, baseDir, destDir, arch
 		return &ExtractionError{
 			ArchivePath: archivePath,
 			Destination: destDir,
-			Context:     "validating header name",
+			Context:     "validating linkname for hard link",
 			Err:         err,
 		}
 	}
@@ -389,7 +389,7 @@ func (e *Extractor) extractHardLink(targetPath, linkname, baseDir, destDir, arch
 // Files and directories are created permissively then chmod to the correct permissions from header.Mode & 0777.
 func (e *Extractor) extractEntry(
 	tarReader TarReader,
-	header *TarHeader,
+	header *tar.Header,
 	targetPath, baseDir, destDir, archivePath string,
 ) error {
 	// Extract permissions from tar header, masking to standard Unix permissions
@@ -448,13 +448,16 @@ func (e *Extractor) extractEntry(
 	return nil
 }
 
-// validateSymlinkChain validates that a symlink chain resolves within the destination directory.
-func (e *Extractor) validateSymlinkChain(resolved, destDir string) error {
-	evaled, err := e.fs.EvalSymlinks(resolved)
+// validateEvalSymlinks performs common symlink evaluation and validation logic.
+// It calls EvalSymlinks, cleans the result, checks the destDir prefix, and returns
+// appropriate SecurityError with the provided validationType for EvalSymlinks errors
+// and "symlink chain destination check" for invalid path cases.
+func (e *Extractor) validateEvalSymlinks(targetPath, destDir, validationType string) error {
+	evaled, err := e.fs.EvalSymlinks(targetPath)
 	if err != nil {
 		return &SecurityError{
-			AttemptedPath: resolved,
-			Validation:    "symlink chain resolution",
+			AttemptedPath: targetPath,
+			Validation:    validationType,
 			Err:           err,
 		}
 	}
@@ -462,7 +465,7 @@ func (e *Extractor) validateSymlinkChain(resolved, destDir string) error {
 	evaled = filepath.Clean(evaled)
 	if !strings.HasPrefix(evaled, destDir+string(filepath.Separator)) && evaled != destDir {
 		return &SecurityError{
-			AttemptedPath: resolved,
+			AttemptedPath: targetPath,
 			Validation:    "symlink chain destination check",
 			Err:           ErrInvalidPath,
 		}
@@ -471,28 +474,15 @@ func (e *Extractor) validateSymlinkChain(resolved, destDir string) error {
 	return nil
 }
 
+// validateSymlinkChain validates that a symlink chain resolves within the destination directory.
+func (e *Extractor) validateSymlinkChain(resolved, destDir string) error {
+	return e.validateEvalSymlinks(resolved, destDir, "symlink chain resolution")
+}
+
 // validateResolvedPath resolves any symlinks in the target path and validates
 // that the resolved path stays within the destination directory.
 func (e *Extractor) validateResolvedPath(targetPath, destDir string) error {
-	resolved, err := e.fs.EvalSymlinks(targetPath)
-	if err != nil {
-		return &SecurityError{
-			AttemptedPath: targetPath,
-			Validation:    "resolved path destination check",
-			Err:           err,
-		}
-	}
-
-	resolved = filepath.Clean(resolved)
-	if !strings.HasPrefix(resolved, destDir+string(filepath.Separator)) && resolved != destDir {
-		return &SecurityError{
-			AttemptedPath: targetPath,
-			Validation:    "symlink chain destination check",
-			Err:           ErrInvalidPath,
-		}
-	}
-
-	return nil
+	return e.validateEvalSymlinks(targetPath, destDir, "resolved path destination check")
 }
 
 // validateLinkname validates the linkname for symlinks and hard links to prevent symlink attacks.

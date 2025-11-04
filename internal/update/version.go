@@ -1,17 +1,38 @@
-// Copyright © 2025 Nicholas Fedor
-// SPDX-License-Identifier: AGPL-3.0-or-later
-
 package update
 
 import (
 	"fmt"
 	"strings"
 
-	"golang.org/x/mod/semver"
-
+	httpclient "github.com/nicholas-fedor/goUpdater/internal/http"
 	"github.com/nicholas-fedor/goUpdater/internal/logger"
 	"github.com/nicholas-fedor/goUpdater/internal/version"
+	"golang.org/x/mod/semver"
 )
+
+// GetLatestVersion fetches the latest stable Go version information from the official API.
+// It returns the version info for the current platform or an error if not found.
+// This function maintains backward compatibility by using the default HTTP client.
+func (d *DefaultVersionFetcher) GetLatestVersion() (*httpclient.GoVersionInfo, error) {
+	info, err := httpclient.GetLatestVersion()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest version: %w", err)
+	}
+
+	return info, nil
+}
+
+// GetLatestVersionInfo fetches the latest Go version information.
+// It returns the version info for the current platform or an error if not found.
+// This function maintains backward compatibility by using the default HTTP client.
+func (d *DefaultVersionFetcher) GetLatestVersionInfo() (*httpclient.GoVersionInfo, error) {
+	info, err := d.GetLatestVersion()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest version: %w", err)
+	}
+
+	return info, nil
+}
 
 // compare compares two Go version strings.
 // It returns -1 if version1 < version2, 0 if version1 == version2, and 1 if version1 > version2.

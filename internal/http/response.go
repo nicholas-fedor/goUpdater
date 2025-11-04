@@ -17,7 +17,7 @@ func ValidateResponse(resp *http.Response) error {
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return ErrUnexpectedStatus
+		return fmt.Errorf("unexpected status %d: %w", resp.StatusCode, ErrUnexpectedStatus)
 	}
 
 	return nil
@@ -27,7 +27,7 @@ func ValidateResponse(resp *http.Response) error {
 // It returns an error if the codes do not match.
 func CheckStatusCode(resp *http.Response, expected int) error {
 	if resp.StatusCode != expected {
-		return ErrStatusCodeMismatch
+		return fmt.Errorf("%w: expected %d, got %d", ErrStatusCodeMismatch, expected, resp.StatusCode)
 	}
 
 	return nil

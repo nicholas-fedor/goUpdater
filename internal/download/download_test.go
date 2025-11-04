@@ -49,6 +49,7 @@ func TestDownload(t *testing.T) {
 	tests := []struct {
 		name       string
 		setupMocks func(
+			*testing.T,
 			*mockFilesystem.MockFileSystem,
 			*mockDownload.MockHTTPClient,
 			*mockExec.MockCommandExecutor,
@@ -61,11 +62,13 @@ func TestDownload(t *testing.T) {
 		{
 			name: "successful download",
 			setupMocks: func(
+				t *testing.T,
 				mfs *mockFilesystem.MockFileSystem,
 				mhc *mockDownload.MockHTTPClient,
 				_ *mockExec.MockCommandExecutor,
 				mvf *mockDownload.MockVersionFetcher,
 			) {
+				t.Helper()
 				// Setup version fetcher
 				versionInfo := &httpclient.GoVersionInfo{
 					Version: "go1.21.0",
@@ -93,21 +96,21 @@ func TestDownload(t *testing.T) {
 				mfs.EXPECT().Stat("/home/user").Return(&mockFileInfo{isDir: true}, nil).Once()
 
 				// No existing archive found
-				mfs.EXPECT().
-					Stat("/home/user/Downloads/go1.21.0.linux-amd64.tar.gz").
-					Return(nil, fmt.Errorf("%w", ErrNotFound)).
-					Once()
-				mfs.EXPECT().IsNotExist(fmt.Errorf("%w", ErrNotFound)).Return(true).Once()
-				mfs.EXPECT().Stat("/home/user/go1.21.0.linux-amd64.tar.gz").Return(nil, fmt.Errorf("%w", ErrNotFound)).Once()
-				mfs.EXPECT().IsNotExist(fmt.Errorf("%w", ErrNotFound)).Return(true).Once()
-				mfs.EXPECT().Stat("/tmp/go1.21.0.linux-amd64.tar.gz").Return(nil, fmt.Errorf("%w", ErrNotFound)).Once()
-				mfs.EXPECT().IsNotExist(fmt.Errorf("%w", ErrNotFound)).Return(true).Once()
+				expectNotFound := func(mfs *mockFilesystem.MockFileSystem, path string) {
+					mfs.EXPECT().Stat(path).Return(nil, fmt.Errorf("%w", ErrNotFound)).Once()
+					mfs.EXPECT().IsNotExist(fmt.Errorf("%w", ErrNotFound)).Return(true).Once()
+				}
+				expectNotFound(mfs, "/home/user/Downloads/go1.21.0.linux-amd64.tar.gz")
+				expectNotFound(mfs, "/home/user/go1.21.0.linux-amd64.tar.gz")
+				expectNotFound(mfs, "/tmp/go1.21.0.linux-amd64.tar.gz")
 
 				// Download setup - use os.Pipe for valid file handles
 				reader, writer, err := os.Pipe()
 				if err != nil {
 					panic("failed to create pipe")
 				}
+
+				t.Cleanup(func() { reader.Close(); writer.Close() })
 
 				mfs.EXPECT().Create("/tmp/go1.21.0.linux-amd64.tar.gz").Return(writer, nil).Once()
 				mfs.EXPECT().Open("/tmp/go1.21.0.linux-amd64.tar.gz").Return(reader, nil).Once()
@@ -134,6 +137,7 @@ func TestDownload(t *testing.T) {
 		{
 			name: "version fetch failure",
 			setupMocks: func(
+				_ *testing.T,
 				mfs *mockFilesystem.MockFileSystem,
 				_ *mockDownload.MockHTTPClient,
 				_ *mockExec.MockCommandExecutor,
@@ -154,7 +158,7 @@ func TestDownload(t *testing.T) {
 			mec := mockExec.NewMockCommandExecutor(t)
 			mvf := mockDownload.NewMockVersionFetcher(t)
 
-			testCase.setupMocks(mfs, mhc, mec, mvf)
+			testCase.setupMocks(t, mfs, mhc, mec, mvf)
 
 			downloader := NewDownloader(mfs, mhc, mec, mvf)
 			path, sha256, err := downloader.GetLatest("")

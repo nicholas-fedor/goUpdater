@@ -5,11 +5,13 @@ package uninstall
 
 import "errors"
 
-// ErrInstallationNotFound indicates the Go installation directory does not exist.
-var ErrInstallationNotFound = errors.New("go installation directory does not exist")
-
-// ErrCheckInstallDir indicates failure to check the installation directory.
-var ErrCheckInstallDir = errors.New("failed to check installation directory")
-
-// ErrRemoveFailed indicates failure to remove the installation directory.
-var ErrRemoveFailed = errors.New("failed to remove installation directory")
+var (
+	// ErrInstallationNotFound indicates the Go installation directory does not exist.
+	ErrInstallationNotFound = errors.New("go installation directory does not exist")
+	// ErrCheckInstallDir indicates failure to check the installation directory.
+	ErrCheckInstallDir = errors.New("failed to check installation directory")
+	// ErrInstallDirEmpty indicates that the install directory parameter is empty.
+	ErrInstallDirEmpty = errors.New("install directory cannot be empty")
+	// ErrRemoveFailed indicates failure to remove the installation directory.
+	ErrRemoveFailed = errors.New("failed to remove installation directory")
+)

@@ -4,12 +4,17 @@
 package install
 
 import (
+	"io"
+
+	"github.com/nicholas-fedor/goUpdater/internal/archive"
+	"github.com/nicholas-fedor/goUpdater/internal/download"
 	"github.com/nicholas-fedor/goUpdater/internal/filesystem"
+	"github.com/nicholas-fedor/goUpdater/internal/types"
 )
 
 // ArchiveService defines the interface for archive operations.
 type ArchiveService interface {
-	Validate(archivePath string) error
+	Validate(archivePath, destDir string) error
 	Extract(archivePath, destDir string) error
 	ExtractVersion(archivePath string) string
 }
@@ -17,7 +22,7 @@ type ArchiveService interface {
 // DownloadService defines the interface for download operations.
 type DownloadService interface {
 	GetLatest(tempDir string) (archivePath, checksum string, err error)
-	GetLatestVersionInfo() (versionInfo struct{ Version string }, err error)
+	GetLatestVersionInfo() (versionInfo types.VersionInfo, err error)
 }
 
 // VerifyService defines the interface for verification operations.
@@ -44,35 +49,21 @@ type Installer struct {
 	verifyService    VerifyService
 	versionService   VersionService
 	privilegeService PrivilegeService
+	reader           io.Reader // reader provides input reading functionality, typically os.Stdin in production
 }
 
-// NewInstaller creates a new Installer with the provided dependencies.
-func NewInstaller(fileSystem filesystem.FileSystem) *Installer {
-	return &Installer{
-		fs:               fileSystem,
-		archiveService:   nil,
-		downloadService:  nil,
-		verifyService:    nil,
-		versionService:   nil,
-		privilegeService: nil,
-	}
+// downloadServiceImpl implements DownloadService using download package functions.
+type downloadServiceImpl struct {
+	downloader *download.Downloader
 }
 
-// NewInstallerWithDeps creates a new Installer with all dependencies injected.
-func NewInstallerWithDeps(
-	fileSystem filesystem.FileSystem,
-	archiveSvc ArchiveService,
-	downloadSvc DownloadService,
-	verifySvc VerifyService,
-	versionSvc VersionService,
-	privilegeSvc PrivilegeService,
-) *Installer {
-	return &Installer{
-		fs:               fileSystem,
-		archiveService:   archiveSvc,
-		downloadService:  downloadSvc,
-		verifyService:    verifySvc,
-		versionService:   versionSvc,
-		privilegeService: privilegeSvc,
-	}
+// archiveServiceImpl implements ArchiveService using archive package functions.
+type archiveServiceImpl struct {
+	extractor *archive.Extractor
 }
+
+// defaultVersionFetcherImpl implements VersionFetcher for download service.
+type defaultVersionFetcherImpl struct{}
+
+// versionServiceImpl implements VersionService using version package functions.
+type versionServiceImpl struct{}

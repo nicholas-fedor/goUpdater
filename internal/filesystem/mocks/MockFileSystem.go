@@ -5,6 +5,7 @@
 package mocks
 
 import (
+	"io"
 	"os"
 
 	mock "github.com/stretchr/testify/mock"
@@ -95,23 +96,23 @@ func (_c *MockFileSystem_Chmod_Call) RunAndReturn(run func(name string, mode os.
 }
 
 // Create provides a mock function for the type MockFileSystem
-func (_mock *MockFileSystem) Create(name string) (*os.File, error) {
+func (_mock *MockFileSystem) Create(name string) (io.ReadWriteCloser, error) {
 	ret := _mock.Called(name)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Create")
 	}
 
-	var r0 *os.File
+	var r0 io.ReadWriteCloser
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(string) (*os.File, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(string) (io.ReadWriteCloser, error)); ok {
 		return returnFunc(name)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string) *os.File); ok {
+	if returnFunc, ok := ret.Get(0).(func(string) io.ReadWriteCloser); ok {
 		r0 = returnFunc(name)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*os.File)
+			r0 = ret.Get(0).(io.ReadWriteCloser)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(string) error); ok {
@@ -146,12 +147,12 @@ func (_c *MockFileSystem_Create_Call) Run(run func(name string)) *MockFileSystem
 	return _c
 }
 
-func (_c *MockFileSystem_Create_Call) Return(file *os.File, err error) *MockFileSystem_Create_Call {
-	_c.Call.Return(file, err)
+func (_c *MockFileSystem_Create_Call) Return(readWriteCloser io.ReadWriteCloser, err error) *MockFileSystem_Create_Call {
+	_c.Call.Return(readWriteCloser, err)
 	return _c
 }
 
-func (_c *MockFileSystem_Create_Call) RunAndReturn(run func(name string) (*os.File, error)) *MockFileSystem_Create_Call {
+func (_c *MockFileSystem_Create_Call) RunAndReturn(run func(name string) (io.ReadWriteCloser, error)) *MockFileSystem_Create_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -510,23 +511,23 @@ func (_c *MockFileSystem_MkdirTemp_Call) RunAndReturn(run func(dir string, patte
 }
 
 // Open provides a mock function for the type MockFileSystem
-func (_mock *MockFileSystem) Open(name string) (*os.File, error) {
+func (_mock *MockFileSystem) Open(name string) (io.ReadWriteCloser, error) {
 	ret := _mock.Called(name)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Open")
 	}
 
-	var r0 *os.File
+	var r0 io.ReadWriteCloser
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(string) (*os.File, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(string) (io.ReadWriteCloser, error)); ok {
 		return returnFunc(name)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string) *os.File); ok {
+	if returnFunc, ok := ret.Get(0).(func(string) io.ReadWriteCloser); ok {
 		r0 = returnFunc(name)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*os.File)
+			r0 = ret.Get(0).(io.ReadWriteCloser)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(string) error); ok {
@@ -561,34 +562,34 @@ func (_c *MockFileSystem_Open_Call) Run(run func(name string)) *MockFileSystem_O
 	return _c
 }
 
-func (_c *MockFileSystem_Open_Call) Return(file *os.File, err error) *MockFileSystem_Open_Call {
-	_c.Call.Return(file, err)
+func (_c *MockFileSystem_Open_Call) Return(readWriteCloser io.ReadWriteCloser, err error) *MockFileSystem_Open_Call {
+	_c.Call.Return(readWriteCloser, err)
 	return _c
 }
 
-func (_c *MockFileSystem_Open_Call) RunAndReturn(run func(name string) (*os.File, error)) *MockFileSystem_Open_Call {
+func (_c *MockFileSystem_Open_Call) RunAndReturn(run func(name string) (io.ReadWriteCloser, error)) *MockFileSystem_Open_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // OpenFile provides a mock function for the type MockFileSystem
-func (_mock *MockFileSystem) OpenFile(name string, flag int, perm os.FileMode) (*os.File, error) {
+func (_mock *MockFileSystem) OpenFile(name string, flag int, perm os.FileMode) (io.ReadWriteCloser, error) {
 	ret := _mock.Called(name, flag, perm)
 
 	if len(ret) == 0 {
 		panic("no return value specified for OpenFile")
 	}
 
-	var r0 *os.File
+	var r0 io.ReadWriteCloser
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(string, int, os.FileMode) (*os.File, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(string, int, os.FileMode) (io.ReadWriteCloser, error)); ok {
 		return returnFunc(name, flag, perm)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string, int, os.FileMode) *os.File); ok {
+	if returnFunc, ok := ret.Get(0).(func(string, int, os.FileMode) io.ReadWriteCloser); ok {
 		r0 = returnFunc(name, flag, perm)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*os.File)
+			r0 = ret.Get(0).(io.ReadWriteCloser)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(string, int, os.FileMode) error); ok {
@@ -635,12 +636,12 @@ func (_c *MockFileSystem_OpenFile_Call) Run(run func(name string, flag int, perm
 	return _c
 }
 
-func (_c *MockFileSystem_OpenFile_Call) Return(file *os.File, err error) *MockFileSystem_OpenFile_Call {
-	_c.Call.Return(file, err)
+func (_c *MockFileSystem_OpenFile_Call) Return(readWriteCloser io.ReadWriteCloser, err error) *MockFileSystem_OpenFile_Call {
+	_c.Call.Return(readWriteCloser, err)
 	return _c
 }
 
-func (_c *MockFileSystem_OpenFile_Call) RunAndReturn(run func(name string, flag int, perm os.FileMode) (*os.File, error)) *MockFileSystem_OpenFile_Call {
+func (_c *MockFileSystem_OpenFile_Call) RunAndReturn(run func(name string, flag int, perm os.FileMode) (io.ReadWriteCloser, error)) *MockFileSystem_OpenFile_Call {
 	_c.Call.Return(run)
 	return _c
 }

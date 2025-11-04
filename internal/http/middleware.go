@@ -51,6 +51,7 @@ type retryRoundTripper struct {
 }
 
 // RoundTrip executes the HTTP request with retry logic and exponential backoff.
+// The loop performs 1 initial attempt + maxRetries retries.
 func (r *retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	var lastErr error
 
@@ -63,12 +64,17 @@ func (r *retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 		lastErr = err
 
 		if attempt < r.config.maxRetries {
-			delay := time.Duration(float64(r.config.baseDelay) * math.Pow(r.config.backoffMultiplier, float64(attempt)))
-			if delay > r.config.maxDelay {
-				delay = r.config.maxDelay
-			}
+			delay := min(time.Duration(float64(r.config.baseDelay)*
+				math.Pow(r.config.backoffMultiplier, float64(attempt))), r.config.maxDelay)
 
-			time.Sleep(delay)
+			timer := time.NewTimer(delay)
+			select {
+			case <-req.Context().Done():
+				timer.Stop()
+
+				return nil, req.Context().Err() //nolint:wrapcheck // context error is already wrapped
+			case <-timer.C:
+			}
 		}
 	}
 
@@ -104,7 +110,7 @@ func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	if err != nil {
 		logger.Errorf("HTTP request failed: %v", err)
 
-		return nil, err //nolint:wrapcheck // error from retry logic
+		return nil, err //nolint:wrapcheck // forwarding error from wrapped RoundTripper
 	}
 
 	logger.Infof("HTTP response: %d", resp.StatusCode)

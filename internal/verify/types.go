@@ -19,6 +19,7 @@ import (
 // Static test errors to satisfy err113 linter rule.
 var (
 	errUnexpectedGoVersionOutputFormat = errors.New("unexpected go version output format")
+	errPermissionDenied                = errors.New("permission denied checking Go binary")
 )
 
 // VerificationInfo holds detailed verification information for the Go installation.
@@ -44,15 +45,16 @@ func NewVerifier(fs filesystem.FileSystem, executor exec.CommandExecutor) *Verif
 
 // Verify performs the complete Go verification workflow.
 // It retrieves verification information for the specified install directory,
-// displays the results, and handles any errors by logging and exiting.
-func (v *Verifier) Verify(installDir string) {
+// displays the results, and returns any errors encountered.
+func (v *Verifier) Verify(installDir string) error {
 	info, err := v.GetVerificationInfo(installDir)
 	if err != nil {
-		logger.Errorf("Failed to get verification info: %v", err)
-		os.Exit(1)
+		return err
 	}
 
 	v.displayVerificationInfo(info)
+
+	return nil
 }
 
 // Installation checks if Go is properly installed and matches the expected version.
@@ -101,10 +103,9 @@ func (v *Verifier) GetInstalledVersionCore(installDir string) (string, error) {
 		}
 
 		if os.IsPermission(err) {
-			logger.Debugf("Go binary access denied at %s: permission denied, assuming not installed", goBinPath)
-			logger.Debugf("Go is not installed in %s", installDir)
+			logger.Errorf("permission denied checking Go binary at %s", goBinPath)
 
-			return "", nil // Assume not installed due to permission error
+			return "", fmt.Errorf("%w at %s", errPermissionDenied, goBinPath)
 		}
 
 		logger.Debugf("Failed to check Go binary at %s: %v", goBinPath, err)
@@ -172,10 +173,63 @@ func (v *Verifier) GetInstalledVersion(installDir string) (string, error) {
 }
 
 // GetInstalledVersionWithLogging returns the version of the currently installed Go.
-// It runs 'go version', extracts the version string, and logs the result.
-func (v *Verifier) GetInstalledVersionWithLogging(_ string) (string, error) {
-	// Implementation would go here
-	return "", nil
+// It runs 'go version', extracts the version string, logs the full command output
+// along with a clear message using the verifier's logger, and returns the version
+// string and any execution/parsing error. Errors include command output for debugging.
+func (v *Verifier) GetInstalledVersionWithLogging(installDir string) (string, error) {
+	goBinPath := filepath.Join(installDir, "bin", "go")
+
+	// Check if go binary exists
+	_, err := v.fs.Stat(goBinPath)
+	if err != nil {
+		if v.fs.IsNotExist(err) {
+			logger.Infof("Go binary not found at %s: file does not exist", goBinPath)
+			logger.Infof("Go is not installed in %s", installDir)
+
+			return "", nil // Go is not installed
+		}
+
+		if os.IsPermission(err) {
+			logger.Infof("Go binary access denied at %s: permission denied, assuming not installed", goBinPath)
+			logger.Infof("Go is not installed in %s", installDir)
+
+			return "", nil // Assume not installed due to permission error
+		}
+
+		logger.Infof("Failed to check Go binary at %s: %v", goBinPath, err)
+
+		return "", fmt.Errorf("failed to check Go binary at %s: %w", goBinPath, err)
+	}
+
+	logger.Infof("Go binary found at %s, executing 'go version' command", goBinPath)
+
+	// Run 'go version' command
+	ctx := context.Background()
+	cmd := v.executor.CommandContext(ctx, goBinPath, "version")
+
+	output, err := cmd.Output()
+	if err != nil {
+		logger.Infof("Failed to execute 'go version' command: %v", err)
+		logger.Infof("Command output: %s", strings.TrimSpace(string(output)))
+
+		return "", fmt.Errorf("failed to execute 'go version' at %s: %w (output: %s)",
+			goBinPath, err, strings.TrimSpace(string(output)))
+	}
+
+	logger.Infof("Go version command output: %s", strings.TrimSpace(string(output)))
+
+	// Parse version from output (format: "go version go1.21.0 linux/amd64")
+	parts := strings.Fields(string(output))
+	if len(parts) < 3 || parts[0] != "go" || parts[1] != "version" {
+		logger.Infof("Unexpected go version output format: %s", string(output))
+
+		return "", fmt.Errorf("%w: %s", errUnexpectedGoVersionOutputFormat, string(output))
+	}
+
+	version := parts[2]
+	logger.Infof("Extracted Go version: %s", version)
+
+	return version, nil
 }
 
 // displayVerificationInfo displays verification information in a tree format.

@@ -4,18 +4,19 @@
 package update
 
 import (
-	"github.com/nicholas-fedor/goUpdater/internal/download"
 	"github.com/nicholas-fedor/goUpdater/internal/exec"
 	"github.com/nicholas-fedor/goUpdater/internal/filesystem"
+	httpclient "github.com/nicholas-fedor/goUpdater/internal/http"
 )
 
 // CommandExecutor defines the interface for executing commands.
 type CommandExecutor = exec.CommandExecutor
 
 // VersionFetcher defines the interface for fetching version information.
+// Canonical ownership: httpclient.GoVersionInfo.
 type VersionFetcher interface {
 	// GetLatestVersionInfo fetches the latest Go version information.
-	GetLatestVersionInfo() (*download.GoVersionInfo, error)
+	GetLatestVersionInfo() (*httpclient.GoVersionInfo, error)
 }
 
 // ArchiveDownloader defines the interface for downloading Go archives.
@@ -59,3 +60,6 @@ type Updater struct {
 	verifier          Verifier
 	privilegeManager  PrivilegeManager
 }
+
+// DefaultVersionFetcher implements VersionFetcher using the version package.
+type DefaultVersionFetcher struct{}

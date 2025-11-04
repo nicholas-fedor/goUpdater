@@ -7,34 +7,55 @@ package privileges
 
 import (
 	"errors"
-	"os"
 	"os/user"
 	"path/filepath"
+	"sync"
 
 	"github.com/nicholas-fedor/goUpdater/internal/exec"
 	"github.com/nicholas-fedor/goUpdater/internal/filesystem"
 	"github.com/nicholas-fedor/goUpdater/internal/logger"
 )
 
-// IsRoot reports whether the current process is running as root.
-// It creates a default privilege manager and checks the effective user ID.
-func IsRoot() bool {
-	pm := NewPrivilegeManager(&filesystem.OSFileSystem{}, OSPrivilegeManagerImpl{}, &exec.OSCommandExecutor{})
+var (
+	defaultPrivilegeManager     *PrivilegeManager //nolint:gochecknoglobals // singleton for convenience wrappers
+	defaultPrivilegeManagerOnce sync.Once         //nolint:gochecknoglobals // once for singleton initialization
+)
 
+func getDefaultPrivilegeManager() *PrivilegeManager {
+	defaultPrivilegeManagerOnce.Do(func() {
+		defaultPrivilegeManager = NewPrivilegeManager(&filesystem.OSFileSystem{}, OSPrivilegeManagerImpl{}, &exec.OSCommandExecutor{})
+	})
+
+	return defaultPrivilegeManager
+}
+
+// IsRootWithManager reports whether the current process is running as root using the provided privilege manager.
+// It checks the effective user ID.
+func IsRootWithManager(pm *PrivilegeManager) bool {
 	return pm.isRoot()
 }
 
-// RequestElevation re-executes the current process with sudo if not already running as root.
-// It creates a default privilege manager and delegates the elevation request.
-func RequestElevation() error {
-	pm := NewPrivilegeManager(&filesystem.OSFileSystem{}, OSPrivilegeManagerImpl{}, &exec.OSCommandExecutor{})
-
+// RequestElevationWithManager re-executes the current process with sudo if not already running as root using the provided privilege manager.
+// It delegates the elevation request to the manager.
+func RequestElevationWithManager(pm *PrivilegeManager) error {
 	return pm.requestElevation()
 }
 
-// HandleElevationError logs and exits with an error message for privilege elevation failures.
-// It provides detailed error information and user guidance before terminating the process.
-func HandleElevationError(err error) {
+// IsRoot reports whether the current process is running as root.
+// It uses the default privilege manager.
+func IsRoot() bool {
+	return IsRootWithManager(getDefaultPrivilegeManager())
+}
+
+// RequestElevation re-executes the current process with sudo if not already running as root.
+// It uses the default privilege manager.
+func RequestElevation() error {
+	return RequestElevationWithManager(getDefaultPrivilegeManager())
+}
+
+// HandleElevationError logs an error message for privilege elevation failures.
+// It provides detailed error information and user guidance before returning the error.
+func HandleElevationError(err error) error {
 	var elevErr *ElevationError
 	if errors.As(err, &elevErr) {
 		logger.Errorf("Error: Failed to obtain elevated privileges during %s: %s", elevErr.Op, elevErr.Reason)
@@ -54,7 +75,7 @@ func HandleElevationError(err error) {
 		logger.Error("Installation requires elevated privileges. Please run with sudo or as root.")
 	}
 
-	os.Exit(1)
+	return err
 }
 
 // ElevateAndExecute checks for root privileges and requests elevation if necessary.
@@ -67,6 +88,44 @@ func ElevateAndExecute(callback func() error) error {
 	pm := NewPrivilegeManager(&filesystem.OSFileSystem{}, OSPrivilegeManagerImpl{}, &exec.OSCommandExecutor{})
 
 	return pm.ElevateAndExecute(callback)
+}
+
+// IsElevated checks if the process is running with elevated privileges via sudo.
+// It returns true if the SUDO_USER environment variable is set, indicating
+// the process was started with sudo by a different user.
+// This is the exported version of the internal isElevated function.
+func IsElevated() bool {
+	pm := NewPrivilegeManager(&filesystem.OSFileSystem{}, OSPrivilegeManagerImpl{}, &exec.OSCommandExecutor{})
+
+	return isElevated(pm.pm)
+}
+
+// GetOriginalUserHome retrieves the original user's home directory from the SUDO_USER environment variable.
+// It provides access to the internal getOriginalUserHome function.
+func GetOriginalUserHome() string {
+	pm := NewPrivilegeManager(&filesystem.OSFileSystem{}, OSPrivilegeManagerImpl{}, &exec.OSCommandExecutor{})
+
+	return getOriginalUserHome(pm.pm)
+}
+
+// GetSearchDirectories determines the directories to search for existing archives.
+// When running with elevated privileges, it includes both the elevated user's directories
+// and the original user's directories to find user-downloaded archives.
+// It only includes directories that are readable to maintain security.
+// This is the exported version of the internal getSearchDirectories function.
+func GetSearchDirectories(elevatedHome, destDir string, fileSystem filesystem.FileSystem) []string {
+	pm := NewPrivilegeManager(fileSystem, OSPrivilegeManagerImpl{}, &exec.OSCommandExecutor{})
+
+	return getSearchDirectories(elevatedHome, destDir, pm.pm, fileSystem)
+}
+
+// ElevateAndExecuteWithDrop is a convenience function that uses the default privilege manager
+// to perform operations with automatic privilege dropping.
+// It creates a default privilege manager and delegates the operation.
+func ElevateAndExecuteWithDrop(callback func() error) error {
+	pm := NewPrivilegeManager(&filesystem.OSFileSystem{}, OSPrivilegeManagerImpl{}, &exec.OSCommandExecutor{})
+
+	return pm.ElevateAndExecuteWithDrop(callback)
 }
 
 // isElevated checks if the process is running with elevated privileges via sudo.
@@ -100,24 +159,6 @@ func getOriginalUserHome(pm OSPrivilegeManager) string {
 	logger.Debugf("Original user home directory resolved: %s", originalUser.HomeDir)
 
 	return originalUser.HomeDir
-}
-
-// IsElevated checks if the process is running with elevated privileges via sudo.
-// It returns true if the SUDO_USER environment variable is set, indicating
-// the process was started with sudo by a different user.
-// This is the exported version of the internal isElevated function.
-func IsElevated() bool {
-	pm := NewPrivilegeManager(&filesystem.OSFileSystem{}, OSPrivilegeManagerImpl{}, &exec.OSCommandExecutor{})
-
-	return isElevated(pm.pm)
-}
-
-// GetOriginalUserHome retrieves the original user's home directory from the SUDO_USER environment variable.
-// It provides access to the internal getOriginalUserHome function.
-func GetOriginalUserHome() string {
-	pm := NewPrivilegeManager(&filesystem.OSFileSystem{}, OSPrivilegeManagerImpl{}, &exec.OSCommandExecutor{})
-
-	return getOriginalUserHome(pm.pm)
 }
 
 // getSearchDirectories determines the directories to search for existing archives.
@@ -198,24 +239,4 @@ func isReadableDir(dir string, fs filesystem.FileSystem) bool {
 	}
 
 	return info.IsDir()
-}
-
-// GetSearchDirectories determines the directories to search for existing archives.
-// When running with elevated privileges, it includes both the elevated user's directories
-// and the original user's directories to find user-downloaded archives.
-// It only includes directories that are readable to maintain security.
-// This is the exported version of the internal getSearchDirectories function.
-func GetSearchDirectories(elevatedHome, destDir string, fileSystem filesystem.FileSystem) []string {
-	pm := NewPrivilegeManager(fileSystem, OSPrivilegeManagerImpl{}, &exec.OSCommandExecutor{})
-
-	return getSearchDirectories(elevatedHome, destDir, pm.pm, fileSystem)
-}
-
-// ElevateAndExecuteWithDrop is a convenience function that uses the default privilege manager
-// to perform operations with automatic privilege dropping.
-// It creates a default privilege manager and delegates the operation.
-func ElevateAndExecuteWithDrop(callback func() error) error {
-	pm := NewPrivilegeManager(&filesystem.OSFileSystem{}, OSPrivilegeManagerImpl{}, &exec.OSCommandExecutor{})
-
-	return pm.ElevateAndExecuteWithDrop(callback)
 }

@@ -20,17 +20,6 @@ import (
 
 var errNetworkError = errors.New("network error")
 
-func TestGetLatestVersion(t *testing.T) {
-	t.Parallel()
-
-	got, err := GetLatestVersion()
-	require.NoError(t, err)
-	assert.NotNil(t, got)
-	assert.True(t, got.Stable)
-	assert.NotEmpty(t, got.Version)
-	assert.NotEmpty(t, got.Files)
-}
-
 func Test_getLatestVersionWithClient(t *testing.T) {
 	t.Parallel()
 

@@ -20,6 +20,7 @@ By default, Go is installed to /usr/local/go. If an archive path is provided,
 it will install from that archive instead.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Error is ignored as the flag is defined with a default value in this function
 			installDir, _ := cmd.Flags().GetString("install-dir")
 
 			var archivePath string

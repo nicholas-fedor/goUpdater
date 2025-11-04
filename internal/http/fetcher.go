@@ -8,9 +8,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/nicholas-fedor/goUpdater/internal/logger"
+	"github.com/nicholas-fedor/goUpdater/internal/version"
 )
+
+// defaultTimeout defines the default timeout duration for HTTP requests.
+const defaultTimeout = 10 * time.Second
 
 // GetLatestVersion fetches the latest stable Go version information from the official API.
 // It returns the version info for the current platform or an error if not found.
@@ -26,13 +31,18 @@ func GetLatestVersion() (*GoVersionInfo, error) {
 func getLatestVersionWithClient(client Client) (*GoVersionInfo, error) {
 	logger.Debug("Fetching latest Go version information from official API")
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://go.dev/dl/?mode=json", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://go.dev/dl/?mode=json", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Set proper headers for API requests
-	req.Header.Set("User-Agent", "goUpdater/dev")
+	// Construct User-Agent string using dynamic version information
+	userAgent := "goUpdater/" + version.GetClientVersion()
+	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := client.Do(req)

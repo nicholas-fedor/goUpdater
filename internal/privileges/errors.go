@@ -8,36 +8,29 @@ import (
 	"fmt"
 )
 
-// ErrElevationRequired indicates that the operation requires elevated privileges.
-var ErrElevationRequired = errors.New("operation requires elevated privileges")
-
-// ErrElevationFailed indicates that privilege elevation failed.
-var ErrElevationFailed = errors.New("privilege elevation failed")
-
-// ErrSudoNotAvailable indicates that sudo is not available on the system.
-var ErrSudoNotAvailable = errors.New("sudo is not available on this system")
-
-// ErrExecutableNotFound indicates that the executable path could not be determined.
-var ErrExecutableNotFound = errors.New("executable path could not be determined")
-
-// ErrPrivilegeDropFailed indicates that dropping privileges back to the original user failed.
-var ErrPrivilegeDropFailed = errors.New("failed to drop privileges to original user")
-
-// ErrArgumentSanitizationFailed indicates that argument sanitization failed due to dangerous content.
-var ErrArgumentSanitizationFailed = errors.New("argument sanitization failed due to dangerous content")
-
-// ErrDangerousCharacters indicates that arguments contain dangerous characters.
-var ErrDangerousCharacters = errors.New("arguments contain dangerous characters")
-
-// ErrDangerousSudoOption indicates that arguments contain dangerous sudo options.
-var ErrDangerousSudoOption = errors.New("arguments contain dangerous sudo options")
-
-// ErrNonPrintableCharacters indicates that arguments contain non-printable characters.
-var ErrNonPrintableCharacters = errors.New("arguments contain non-printable characters")
-
-// ErrGoNotInstalled indicates that Go is not installed in the specified directory.
-var ErrGoNotInstalled = errors.New("go is not installed in /usr/local/go. " +
-	"Use --auto-install flag to install it automatically")
+var (
+	// ErrElevationRequired indicates that the operation requires elevated privileges.
+	ErrElevationRequired = errors.New("operation requires elevated privileges")
+	// ErrElevationFailed indicates that privilege elevation failed.
+	ErrElevationFailed = errors.New("privilege elevation failed")
+	// ErrSudoNotAvailable indicates that sudo is not available on the system.
+	ErrSudoNotAvailable = errors.New("sudo is not available on this system")
+	// ErrExecutableNotFound indicates that the executable path could not be determined.
+	ErrExecutableNotFound = errors.New("executable path could not be determined")
+	// ErrPrivilegeDropFailed indicates that dropping privileges back to the original user failed.
+	ErrPrivilegeDropFailed = errors.New("failed to drop privileges to original user")
+	// ErrArgumentSanitizationFailed indicates that argument sanitization failed due to dangerous content.
+	ErrArgumentSanitizationFailed = errors.New("argument sanitization failed due to dangerous content")
+	// ErrDangerousCharacters indicates that arguments contain dangerous characters.
+	ErrDangerousCharacters = errors.New("arguments contain dangerous characters")
+	// ErrDangerousSudoOption indicates that arguments contain dangerous sudo options.
+	ErrDangerousSudoOption = errors.New("arguments contain dangerous sudo options")
+	// ErrNonPrintableCharacters indicates that arguments contain non-printable characters.
+	ErrNonPrintableCharacters = errors.New("arguments contain non-printable characters")
+	// ErrGoNotInstalled indicates that Go is not installed in the specified directory.
+	ErrGoNotInstalled = errors.New("go is not installed in /usr/local/go. " +
+		"Use --auto-install flag to install it automatically")
+)
 
 // ElevationError represents an error during privilege elevation with additional context.
 type ElevationError struct {

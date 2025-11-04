@@ -6,6 +6,8 @@ package download
 import (
 	"errors"
 	"fmt"
+
+	httpValidation "github.com/nicholas-fedor/goUpdater/internal/http"
 )
 
 // ErrNoArchive indicates no archive was found for the platform.
@@ -67,141 +69,11 @@ type ChecksumError struct {
 	Err            error
 }
 
-// simpleURL represents a simplified URL structure for sanitization.
-type simpleURL struct {
-	Scheme string
-	Host   string
-	Path   string
-}
-
-// sanitizeURLForError sanitizes URLs in error messages to prevent information disclosure.
-// It removes query parameters and fragments that might contain sensitive information.
-func sanitizeURLForError(url string) string {
-	if url == "" {
-		return "unknown"
-	}
-
-	// Parse the URL to remove sensitive parts
-	parsed, err := parseURL(url)
-	if err == nil {
-		// Remove query parameters and fragments for security
-		cleanURL := parsed.Scheme + "://" + parsed.Host + parsed.Path
-
-		return cleanURL
-	}
-
-	return url
-}
-
-// sanitizePathForError sanitizes file paths in error messages to prevent information disclosure.
-// It removes absolute paths and sensitive directory information.
-func sanitizePathForError(path string) string {
-	if path == "" {
-		return "unknown"
-	}
-
-	// For security, only show the filename, not the full path
-	// This prevents leaking directory structure information
-	if lastSlash := findLastSlash(path); lastSlash >= 0 {
-		return path[lastSlash+1:]
-	}
-
-	return path
-}
-
-// parseURL is a simple URL parser that avoids using net/url.Parse to prevent potential issues.
-func parseURL(rawURL string) (*simpleURL, error) {
-	// Simple URL parsing for sanitization purposes
-	// This is a basic implementation to avoid complex parsing dependencies
-
-	// Find scheme
-	schemeEnd := findSchemeEnd(rawURL)
-	if schemeEnd == -1 {
-		return nil, fmt.Errorf("%w", ErrInvalidURLError)
-	}
-
-	scheme := rawURL[:schemeEnd]
-
-	// Find host start
-	hostStart := schemeEnd
-	if hostStart < len(rawURL) && rawURL[hostStart] == ':' {
-		hostStart++
-		if hostStart < len(rawURL) && rawURL[hostStart] == '/' {
-			hostStart++
-		}
-
-		if hostStart < len(rawURL) && rawURL[hostStart] == '/' {
-			hostStart++
-		}
-	}
-
-	// Find host end (before path/query/fragment)
-	hostEnd := findHostEnd(rawURL, hostStart)
-
-	host := ""
-	path := ""
-
-	if hostEnd > hostStart {
-		host = rawURL[hostStart:hostEnd]
-		if hostEnd < len(rawURL) {
-			path = rawURL[hostEnd:]
-		}
-	}
-
-	return &simpleURL{
-		Scheme: scheme,
-		Host:   host,
-		Path:   path,
-	}, nil
-}
-
-// findSchemeEnd finds the end of the URL scheme.
-func findSchemeEnd(url string) int {
-	for i, r := range url {
-		if r == ':' {
-			return i
-		}
-
-		if !isSchemeChar(r) {
-			break
-		}
-	}
-
-	return -1
-}
-
-// isSchemeChar checks if a character is valid in a URL scheme.
-func isSchemeChar(r rune) bool {
-	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '+' || r == '-' || r == '.'
-}
-
-// findHostEnd finds the end of the host part in a URL.
-func findHostEnd(url string, start int) int {
-	for i := start; i < len(url); i++ {
-		if url[i] == '/' || url[i] == '?' || url[i] == '#' {
-			return i
-		}
-	}
-
-	return len(url)
-}
-
-// findLastSlash finds the last path separator in a string.
-func findLastSlash(s string) int {
-	for i := len(s) - 1; i >= 0; i-- {
-		if s[i] == '/' || s[i] == '\\' {
-			return i
-		}
-	}
-
-	return -1
-}
-
 // Error implements the error interface for Error.
 // Note: This method sanitizes URLs and paths to prevent information disclosure.
 func (e *Error) Error() string {
-	sanitizedURL := sanitizeURLForError(e.URL)
-	sanitizedDest := sanitizePathForError(e.Destination)
+	sanitizedURL := httpValidation.SanitizeURLForError(e.URL)
+	sanitizedDest := httpValidation.SanitizePathForError(e.Destination)
 
 	return fmt.Sprintf("download failed: url=%s dest=%s", sanitizedURL, sanitizedDest)
 }
@@ -214,7 +86,7 @@ func (e *Error) Unwrap() error {
 // Error implements the error interface for NetworkError.
 // Note: This method sanitizes URLs to prevent information disclosure.
 func (e *NetworkError) Error() string {
-	sanitizedURL := sanitizeURLForError(e.URL)
+	sanitizedURL := httpValidation.SanitizeURLForError(e.URL)
 	if e.Response != "" {
 		return fmt.Sprintf("network error: status=%d url=%s response=%s", e.StatusCode, sanitizedURL, e.Response)
 	}

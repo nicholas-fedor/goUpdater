@@ -162,7 +162,7 @@ func TestValidateVersionString(t *testing.T) { //nolint:maintidx // comprehensiv
 		{
 			name:        "version exactly at max length",
 			version:     "go" + strings.Repeat("1", MaxVersionLength-2), // 256 chars total
-			expectError: false,                                          // Length is ok, but semver validation will fail
+			expectError: true,                                           // Length ok, semver invalid
 		},
 
 		// Invalid: UTF-8 issues

@@ -6,6 +6,9 @@
 package verify
 
 import (
+	"fmt"
+
+	"github.com/nicholas-fedor/goUpdater/internal/logger"
 	"github.com/nicholas-fedor/goUpdater/internal/verify"
 	"github.com/spf13/cobra"
 )
@@ -20,7 +23,14 @@ Displays the currently installed Go version. By default, checks /usr/local/go.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			verifyDir, _ := cmd.Flags().GetString("install-dir")
 
-			return verify.RunVerify(verifyDir)
+			err := verify.RunVerify(verifyDir)
+			if err != nil {
+				logger.Errorf("Verification failed: %v", err)
+
+				return fmt.Errorf("verification failed: %w", err)
+			}
+
+			return nil
 		},
 	}
 	cmd.Flags().StringP("install-dir", "d", "/usr/local/go", "Directory to verify Go installation")

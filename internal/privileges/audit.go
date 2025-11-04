@@ -4,13 +4,10 @@
 package privileges
 
 import (
-	"fmt"
+	"strconv"
 
 	"github.com/nicholas-fedor/goUpdater/internal/logger"
 )
-
-// DefaultAuditLogger provides a basic implementation of audit logging using the logger package.
-type DefaultAuditLogger struct{}
 
 // LogPrivilegeChange logs privilege changes for audit purposes.
 // It records the operation type, user IDs involved, and the reason for the change.
@@ -32,8 +29,8 @@ func (d *DefaultAuditLogger) LogElevationAttempt(success bool, reason string) {
 // It records the target user ID and differentiates between successful and failed drop attempts.
 func (d *DefaultAuditLogger) LogPrivilegeDrop(success bool, targetUID int, reason string) {
 	if success {
-		logger.Info(fmt.Sprintf("Privilege drop attempt to UID %d: %s", targetUID, reason))
+		logger.Info("Privilege drop attempt to UID " + strconv.Itoa(targetUID) + ": " + reason)
 	} else {
-		logger.Warn(fmt.Sprintf("Privilege drop attempt to UID %d failed: %s", targetUID, reason))
+		logger.Warn("Privilege drop attempt to UID " + strconv.Itoa(targetUID) + " failed: " + reason)
 	}
 }

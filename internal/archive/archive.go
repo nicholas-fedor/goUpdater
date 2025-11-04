@@ -32,28 +32,39 @@ func Extract(archivePath, destDir string) error {
 // ExtractVersion extracts the Go version from an archive filename.
 // It handles both full paths and filenames by extracting the base name.
 // The function removes the .tar.gz extension if present, then parses the filename
-// to extract the complete version string up to the platform part (e.g., "go1.25.2" from "go1.25.2.linux-amd64.tar.gz").
+// to extract the base semantic version (major.minor.patch) before any pre-release or build metadata.
 //
 // The parsing logic assumes Go archive filenames follow the standard format:
-// "go<major>.<minor>.<patch><suffix>.<platform>-<arch>.tar.gz"
+// "go<major>.<minor>.<patch><pre-release>.<platform>-<arch>.tar.gz"
 //
 // Parameters:
 //   - filename: The archive filename or full path to parse
 //
 // Returns:
-//   - The extracted complete version (e.g., "go1.25.2") if parsing succeeds
+//   - The extracted base version (e.g., "go1.25.2") if parsing succeeds
 //   - The original filename (after basename extraction) as fallback if parsing fails
 //
 // Examples:
 //   - "go1.21.0.linux-amd64.tar.gz" -> "go1.21.0"
 //   - "/path/to/go1.20.0.darwin-amd64.tar.gz" -> "go1.20.0"
+//   - "go1.21.0-rc1-linux-amd64.tar.gz" -> "go1.21.0"
 //   - "invalid-filename" -> "invalid-filename"
 //
 // cyclop:ignore
-func ExtractVersion(filename string) string { //nolint:cyclop
+func ExtractVersion(filename string) string { //nolint:cyclop,funlen
+	originalFilename := filename
+	logger.Debugf("ExtractVersion original filename: %s", originalFilename)
+
+	// Handle empty string input
+	if filename == "" {
+		logger.Debugf("ExtractVersion empty input, returning empty")
+
+		return ""
+	}
+
 	// Extract basename in case a full path is provided
 	filename = filepath.Base(filename)
-	logger.Debugf("ExtractVersion input filename: %s", filename)
+	logger.Debugf("ExtractVersion basename: %s", filename)
 
 	// Remove .tar.gz extension if present
 	if len(filename) > 7 && strings.HasSuffix(filename, ".tar.gz") {
@@ -64,53 +75,71 @@ func ExtractVersion(filename string) string { //nolint:cyclop
 
 	// Check for valid go prefix
 	if !strings.HasPrefix(filename, "go") {
-		logger.Debugf("ExtractVersion fallback: %s", filename)
+		logger.Debugf("ExtractVersion fallback (no go prefix): %s", originalFilename)
 
-		return filename
+		return originalFilename
 	}
 
 	rest := filename[2:] // part after "go"
-	if rest == "" {
-		logger.Debugf("ExtractVersion fallback: %s", filename)
+	logger.Debugf("ExtractVersion rest after go: %s", rest)
 
-		return filename
+	if rest == "" {
+		logger.Debugf("ExtractVersion fallback (empty rest): %s", originalFilename)
+
+		return originalFilename
 	}
 
 	// Check if the rest starts with a digit (valid version format)
 	if rest[0] < '0' || rest[0] > '9' {
-		logger.Debugf("ExtractVersion fallback: %s", filename)
+		logger.Debugf("ExtractVersion fallback (no digit start): %s", originalFilename)
 
-		return filename
+		return originalFilename
 	}
 
-	// Split into parts by "."
-	parts := strings.Split(rest, ".")
+	// Split by "-" to separate version from pre-release and platform
+	splitRest := strings.Split(rest, "-")
+	if len(splitRest) == 0 {
+		logger.Debugf("ExtractVersion fallback (no parts after split): %s", originalFilename)
+
+		return originalFilename
+	}
+
+	versionPart := splitRest[0]
+	logger.Debugf("ExtractVersion versionPart: %s", versionPart)
+
+	if versionPart == "" || versionPart[0] < '0' || versionPart[0] > '9' {
+		logger.Debugf("ExtractVersion fallback (invalid versionPart): %s", originalFilename)
+
+		return originalFilename
+	}
+	// Split versionPart by "." to get major.minor.patch
+	parts := strings.Split(versionPart, ".")
+	logger.Debugf("ExtractVersion parts: %v", parts)
 
 	versionParts := make([]string, 0, len(parts))
+	versionParts = append(versionParts, parts...)
 
-	for _, part := range parts {
-		// Stop at the first part containing "-" (platform part)
-		if strings.Contains(part, "-") {
-			break
-		}
+	const requiredVersionParts = 3
+	if len(versionParts) < requiredVersionParts {
+		logger.Debugf("ExtractVersion fallback (insufficient version parts): %s", originalFilename)
 
-		versionParts = append(versionParts, part)
+		return originalFilename
 	}
 
-	if len(versionParts) == 0 {
-		logger.Debugf("ExtractVersion fallback: %s", filename)
-
-		return filename
-	}
+	// Take only the first 3 parts for major.minor.patch
+	versionParts = versionParts[:requiredVersionParts]
 
 	version := "go" + strings.Join(versionParts, ".")
 	logger.Debugf("ExtractVersion extracted version: %s", version)
 
 	// Validate the extracted version using semver
-	if !semver.IsValid("v" + strings.TrimPrefix(version, "go")) {
+	semverCheck := "v" + strings.TrimPrefix(version, "go")
+	logger.Debugf("ExtractVersion semver check: %s", semverCheck)
+
+	if !semver.IsValid(semverCheck) {
 		logger.Debugf("ExtractVersion invalid version: %s", version)
 
-		return filename
+		return originalFilename
 	}
 
 	return version
@@ -130,7 +159,7 @@ func ValidatePath(targetPath, installDir string) error {
 		}
 	}
 
-	if strings.HasPrefix(relPath, "..") || filepath.IsAbs(relPath) {
+	if strings.HasPrefix(relPath, "..") {
 		return &SecurityError{
 			AttemptedPath: targetPath,
 			Validation:    "directory traversal prevention",

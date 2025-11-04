@@ -14,6 +14,7 @@ var (
 	errUnderlyingExtraction = errors.New("underlying extraction error")
 	errUnderlyingSecurity   = errors.New("underlying security error")
 	errUnderlyingValidation = errors.New("underlying validation error")
+	errDifferent            = errors.New("different error")
 )
 
 func TestExtractionError_Error(t *testing.T) {
@@ -252,6 +253,182 @@ func TestValidationError_Unwrap(t *testing.T) {
 
 			e := &ValidationError{Err: testCase.underlying}
 			assert.Equal(t, testCase.expectedErr, e.Unwrap())
+		})
+	}
+}
+func TestExtractionError_Is(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		err      *ExtractionError
+		target   error
+		expected bool
+	}{
+		{
+			name: "same type with same underlying error",
+			err: &ExtractionError{
+				Err: errUnderlyingExtraction,
+			},
+			target: &ExtractionError{
+				Err: errUnderlyingExtraction,
+			},
+			expected: true,
+		},
+		{
+			name: "same type with different underlying error",
+			err: &ExtractionError{
+				Err: errUnderlyingExtraction,
+			},
+			target: &ExtractionError{
+				Err: errDifferent,
+			},
+			expected: false,
+		},
+		{
+			name: "different type",
+			err: &ExtractionError{
+				Err: errUnderlyingExtraction,
+			},
+			target: &SecurityError{
+				Err: errUnderlyingExtraction,
+			},
+			expected: false,
+		},
+		{
+			name: "target is underlying error",
+			err: &ExtractionError{
+				Err: errUnderlyingExtraction,
+			},
+			target:   errUnderlyingExtraction,
+			expected: false,
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := testCase.err.Is(testCase.target)
+			assert.Equal(t, testCase.expected, result)
+		})
+	}
+}
+
+func TestSecurityError_Is(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		err      *SecurityError
+		target   error
+		expected bool
+	}{
+		{
+			name: "same type with same underlying error",
+			err: &SecurityError{
+				Err: errUnderlyingSecurity,
+			},
+			target: &SecurityError{
+				Err: errUnderlyingSecurity,
+			},
+			expected: true,
+		},
+		{
+			name: "same type with different underlying error",
+			err: &SecurityError{
+				Err: errUnderlyingSecurity,
+			},
+			target: &SecurityError{
+				Err: errDifferent,
+			},
+			expected: false,
+		},
+		{
+			name: "different type",
+			err: &SecurityError{
+				Err: errUnderlyingSecurity,
+			},
+			target: &ValidationError{
+				Err: errUnderlyingSecurity,
+			},
+			expected: false,
+		},
+		{
+			name: "target is underlying error",
+			err: &SecurityError{
+				Err: errUnderlyingSecurity,
+			},
+			target:   errUnderlyingSecurity,
+			expected: false,
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := testCase.err.Is(testCase.target)
+			assert.Equal(t, testCase.expected, result)
+		})
+	}
+}
+
+func TestValidationError_Is(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		err      *ValidationError
+		target   error
+		expected bool
+	}{
+		{
+			name: "same type with same underlying error",
+			err: &ValidationError{
+				Err: errUnderlyingValidation,
+			},
+			target: &ValidationError{
+				Err: errUnderlyingValidation,
+			},
+			expected: true,
+		},
+		{
+			name: "same type with different underlying error",
+			err: &ValidationError{
+				Err: errUnderlyingValidation,
+			},
+			target: &ValidationError{
+				Err: errDifferent,
+			},
+			expected: false,
+		},
+		{
+			name: "different type",
+			err: &ValidationError{
+				Err: errUnderlyingValidation,
+			},
+			target: &ExtractionError{
+				Err: errUnderlyingValidation,
+			},
+			expected: false,
+		},
+		{
+			name: "target is underlying error",
+			err: &ValidationError{
+				Err: errUnderlyingValidation,
+			},
+			target:   errUnderlyingValidation,
+			expected: false,
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := testCase.err.Is(testCase.target)
+			assert.Equal(t, testCase.expected, result)
 		})
 	}
 }

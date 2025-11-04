@@ -25,7 +25,7 @@ func (fs *OSFileSystem) Stat(name string) (os.FileInfo, error) {
 }
 
 // Open opens the named file for reading.
-func (fs *OSFileSystem) Open(name string) (*os.File, error) {
+func (fs *OSFileSystem) Open(name string) (io.ReadWriteCloser, error) {
 	// #nosec G304 -- name is validated by caller
 	file, err := os.Open(name)
 	if err != nil {
@@ -36,7 +36,7 @@ func (fs *OSFileSystem) Open(name string) (*os.File, error) {
 }
 
 // Create creates the named file with mode 0666 (before umask), truncating it if it already exists.
-func (fs *OSFileSystem) Create(name string) (*os.File, error) {
+func (fs *OSFileSystem) Create(name string) (io.ReadWriteCloser, error) {
 	// #nosec G304 -- name is validated by caller
 	file, err := os.Create(name)
 	if err != nil {
@@ -101,7 +101,7 @@ func (fs *OSFileSystem) MkdirTemp(dir, pattern string) (string, error) {
 	return tempDir, nil
 }
 
-// Lstat returns a FileInfo describing the named file, following symbolic links.
+// Lstat returns a FileInfo describing the named file without following symbolic links.
 func (fs *OSFileSystem) Lstat(name string) (os.FileInfo, error) {
 	info, err := os.Lstat(name)
 	if err != nil {
@@ -142,7 +142,7 @@ func (fs *OSFileSystem) Link(oldname, newname string) error {
 }
 
 // OpenFile is the generalized open call; most users will use Open or Create instead.
-func (fs *OSFileSystem) OpenFile(name string, flag int, perm os.FileMode) (*os.File, error) {
+func (fs *OSFileSystem) OpenFile(name string, flag int, perm os.FileMode) (io.ReadWriteCloser, error) {
 	// #nosec G304 -- name is validated by caller
 	file, err := os.OpenFile(name, flag, perm)
 	if err != nil {
@@ -183,8 +183,23 @@ func (e *OSJSONEncoder) NewEncoder(w io.Writer) *json.Encoder {
 	return json.NewEncoder(w)
 }
 
+// Encode encodes the given value to JSON and writes it to the underlying writer.
+func (e *OSJSONEncoder) Encode(v interface{}) error {
+	return fmt.Errorf("failed to encode JSON: %w", e.encoder.Encode(v))
+}
+
+// SetIndent sets the indentation for the encoder.
+func (e *OSJSONEncoder) SetIndent(prefix, indent string) {
+	e.encoder.SetIndent(prefix, indent)
+}
+
+// SetEscapeHTML sets whether HTML characters should be escaped.
+func (e *OSJSONEncoder) SetEscapeHTML(on bool) {
+	e.encoder.SetEscapeHTML(on)
+}
+
 // Fprintf writes formatted output to the writer.
-func (w *OSErrorWriter) Fprintf(writer io.Writer, format string, a ...interface{}) (int, error) {
+func (w *OSErrorWriter) Fprintf(writer io.Writer, format string, a ...any) (int, error) {
 	n, err := fmt.Fprintf(writer, format, a...)
 	if err != nil {
 		return n, &FileOperationError{Path: "", Operation: "fprintf", Permissions: 0, Extra: "", Err: err}

@@ -75,7 +75,7 @@ func (dm *DisplayManager) DisplayVerbose(writer io.Writer, info Info) {
 func (dm *DisplayManager) DisplayJSON(writer io.Writer, info Info) error {
 	encoder := dm.encoder.NewEncoder(writer)
 	if encoder == nil {
-		return ErrFailedToCreateEncoder
+		return fmt.Errorf("%w: encoder is nil", ErrFailedToCreateEncoder)
 	}
 
 	err := encoder.Encode(info)

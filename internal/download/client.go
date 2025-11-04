@@ -6,19 +6,27 @@ package download
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	httpclient "github.com/nicholas-fedor/goUpdater/internal/http"
 	"github.com/nicholas-fedor/goUpdater/internal/logger"
 	"github.com/nicholas-fedor/goUpdater/internal/version"
 )
 
+// retryDelay defines the base delay between retry attempts.
+const retryDelay = 2 * time.Second
+
+// maxRetries defines the maximum number of retry attempts for failed downloads.
+const maxRetries = 3
+
 // validateDownloadURL validates the URL for security and correctness before creating a download request.
 // It ensures the URL is well-formed, uses HTTPS, and doesn't contain dangerous schemes or paths.
 //
-//nolint:cyclop // Complex validation logic requires multiple security checks
+
 func validateDownloadURL(rawURL string) error {
 	if strings.TrimSpace(rawURL) == "" {
 		return ErrEmptyURL
@@ -40,11 +48,15 @@ func validateDownloadURL(rawURL string) error {
 	}
 
 	// Prevent localhost and private IP ranges for security
-	host := strings.ToLower(parsedURL.Host)
-	if strings.Contains(host, "localhost") || strings.Contains(host, "127.0.0.1") ||
-		strings.Contains(host, "0.0.0.0") || strings.HasPrefix(host, "10.") ||
-		strings.HasPrefix(host, "172.") || strings.HasPrefix(host, "192.168.") {
+	hostname := parsedURL.Hostname()
+	if strings.Contains(strings.ToLower(hostname), "localhost") {
 		return ErrInvalidURLHost
+	}
+
+	if ip := net.ParseIP(hostname); ip != nil {
+		if ip.IsLoopback() || ip.IsPrivate() {
+			return ErrInvalidURLHost
+		}
 	}
 
 	// Basic path validation - prevent directory traversal
@@ -55,9 +67,9 @@ func validateDownloadURL(rawURL string) error {
 	return nil
 }
 
-// CreateDownloadRequest creates an HTTP GET request for the given URL with context and proper headers.
+// createDownloadRequest creates an HTTP GET request for the given URL with the provided context and proper headers.
 // It sets appropriate headers for modern HTTP clients to ensure compatibility and proper content negotiation.
-func (d *Downloader) createDownloadRequest(url string) (*http.Request, error) {
+func (d *Downloader) createDownloadRequest(ctx context.Context, url string) (*http.Request, error) {
 	logger.Debugf("Creating HTTP request for: %s", url)
 
 	// Validate URL for security
@@ -66,7 +78,7 @@ func (d *Downloader) createDownloadRequest(url string) (*http.Request, error) {
 		return nil, fmt.Errorf("URL validation failed: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -75,11 +87,6 @@ func (d *Downloader) createDownloadRequest(url string) (*http.Request, error) {
 	req.Header.Set("User-Agent", "goUpdater/"+version.GetClientVersion())
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
-
-	// Security headers
-	req.Header.Set("X-Content-Type-Options", "nosniff")
-	req.Header.Set("X-Frame-Options", "DENY")
-	req.Header.Set("X-XSS-Protection", "1; mode=block")
 
 	return req, nil
 }
@@ -124,8 +131,8 @@ func validateSecurityHeaders(resp *http.Response) error {
 }
 
 // ExecuteDownloadRequest executes the HTTP request with retry logic and returns the response.
-// It ensures the response body is closed on error and implements exponential backoff for retries.
-// The function attempts the download up to maxRetries times, handling network errors and server-side issues.
+// It closes the response body immediately for non-OK status codes to prevent resource leaks.
+// Implements exponential backoff for retries, attempting downloads up to maxRetries times.
 func (d *Downloader) executeDownloadRequest(req *http.Request) (*http.Response, error) {
 	var (
 		resp *http.Response
@@ -163,8 +170,8 @@ func (d *Downloader) executeDownloadRequest(req *http.Request) (*http.Response, 
 			return resp, nil
 		}
 
-		// Close response body for non-OK status codes to prevent resource leaks
-		defer func() { _ = resp.Body.Close() }()
+		// Close response body immediately for non-OK status codes to prevent resource leaks
+		_ = resp.Body.Close()
 
 		// Retry on server errors (5xx) or rate limiting (429 Too Many Requests)
 		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
@@ -183,6 +190,24 @@ func (d *Downloader) executeDownloadRequest(req *http.Request) (*http.Response, 
 			Response:   "",
 			Err:        ErrDownloadFailed,
 		}
+	}
+
+	return resp, nil
+}
+
+// NewDefaultHTTPClient creates a new DefaultHTTPClient with an initialized HTTP client.
+// It returns a pointer to DefaultHTTPClient.
+func NewDefaultHTTPClient() *DefaultHTTPClient {
+	return &DefaultHTTPClient{
+		client: httpclient.NewHTTPClient(),
+	}
+}
+
+// Do implements the HTTPClient interface by using the pre-initialized HTTP client.
+func (d *DefaultHTTPClient) Do(req *http.Request) (*http.Response, error) {
+	resp, err := d.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute HTTP request: %w", err)
 	}
 
 	return resp, nil

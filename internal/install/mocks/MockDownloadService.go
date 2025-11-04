@@ -5,6 +5,7 @@
 package mocks
 
 import (
+	"github.com/nicholas-fedor/goUpdater/internal/types"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -102,22 +103,22 @@ func (_c *MockDownloadService_GetLatest_Call) RunAndReturn(run func(tempDir stri
 }
 
 // GetLatestVersionInfo provides a mock function for the type MockDownloadService
-func (_mock *MockDownloadService) GetLatestVersionInfo() (struct{ Version string }, error) {
+func (_mock *MockDownloadService) GetLatestVersionInfo() (types.VersionInfo, error) {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetLatestVersionInfo")
 	}
 
-	var r0 struct{ Version string }
+	var r0 types.VersionInfo
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func() (struct{ Version string }, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func() (types.VersionInfo, error)); ok {
 		return returnFunc()
 	}
-	if returnFunc, ok := ret.Get(0).(func() struct{ Version string }); ok {
+	if returnFunc, ok := ret.Get(0).(func() types.VersionInfo); ok {
 		r0 = returnFunc()
 	} else {
-		r0 = ret.Get(0).(struct{ Version string })
+		r0 = ret.Get(0).(types.VersionInfo)
 	}
 	if returnFunc, ok := ret.Get(1).(func() error); ok {
 		r1 = returnFunc()
@@ -144,12 +145,12 @@ func (_c *MockDownloadService_GetLatestVersionInfo_Call) Run(run func()) *MockDo
 	return _c
 }
 
-func (_c *MockDownloadService_GetLatestVersionInfo_Call) Return(versionInfo struct{ Version string }, err error) *MockDownloadService_GetLatestVersionInfo_Call {
+func (_c *MockDownloadService_GetLatestVersionInfo_Call) Return(versionInfo types.VersionInfo, err error) *MockDownloadService_GetLatestVersionInfo_Call {
 	_c.Call.Return(versionInfo, err)
 	return _c
 }
 
-func (_c *MockDownloadService_GetLatestVersionInfo_Call) RunAndReturn(run func() (struct{ Version string }, error)) *MockDownloadService_GetLatestVersionInfo_Call {
+func (_c *MockDownloadService_GetLatestVersionInfo_Call) RunAndReturn(run func() (types.VersionInfo, error)) *MockDownloadService_GetLatestVersionInfo_Call {
 	_c.Call.Return(run)
 	return _c
 }

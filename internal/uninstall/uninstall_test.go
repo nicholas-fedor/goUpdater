@@ -94,9 +94,9 @@ func TestDefaultUninstaller_Remove(t *testing.T) {
 		{
 			name:          "empty install directory",
 			installDir:    "",
-			statError:     os.ErrNotExist,
-			isNotExist:    true,
-			expectedError: ErrCheckInstallDir,
+			statError:     nil,   // Not called due to early validation
+			isNotExist:    false, // Not called due to early validation
+			expectedError: ErrInstallDirEmpty,
 		},
 		{
 			name:          "invalid path characters",
@@ -237,15 +237,18 @@ func TestDefaultUninstaller_Remove(t *testing.T) {
 			// Setup mock filesystem
 			mockFS := mockFilesystem.NewMockFileSystem(t)
 
-			// Setup expectations
-			mockFS.EXPECT().Stat(testCase.installDir).Return(nil, testCase.statError).Once()
+			// For empty install directory, no filesystem calls are made
+			if testCase.installDir != "" {
+				// Setup expectations
+				mockFS.EXPECT().Stat(testCase.installDir).Return(nil, testCase.statError).Once()
 
-			if testCase.statError == nil {
-				// Directory exists, expect RemoveAll call
-				mockFS.EXPECT().RemoveAll(testCase.installDir).Return(testCase.removeAllError).Once()
-			} else {
-				// Stat failed, check if it's not exist
-				mockFS.EXPECT().IsNotExist(testCase.statError).Return(testCase.isNotExist).Once()
+				if testCase.statError == nil {
+					// Directory exists, expect RemoveAll call
+					mockFS.EXPECT().RemoveAll(testCase.installDir).Return(testCase.removeAllError).Once()
+				} else {
+					// Stat failed, check if it's not exist
+					mockFS.EXPECT().IsNotExist(testCase.statError).Return(testCase.isNotExist).Once()
+				}
 			}
 
 			// Create uninstaller with mock
@@ -360,10 +363,10 @@ func TestRemove(t *testing.T) {
 
 func TestUninstallerInterface(t *testing.T) {
 	t.Parallel()
-	mockUninstall := mockUninstall.NewMockUninstaller(t)
-	mockUninstall.EXPECT().Remove("/test/dir").Return(nil).Once()
+	uninstaller := mockUninstall.NewMockUninstaller(t)
+	uninstaller.EXPECT().Remove("/test/dir").Return(nil).Once()
 
-	var u Uninstaller = mockUninstall
+	var u Uninstaller = uninstaller
 
 	err := u.Remove("/test/dir")
 

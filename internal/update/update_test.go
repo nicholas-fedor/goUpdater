@@ -7,10 +7,10 @@ import (
 	"errors"
 	"testing"
 
+	httpclient "github.com/nicholas-fedor/goUpdater/internal/http"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nicholas-fedor/goUpdater/internal/download"
 	mockFilesystem "github.com/nicholas-fedor/goUpdater/internal/filesystem/mocks"
 	mockUninstall "github.com/nicholas-fedor/goUpdater/internal/uninstall/mocks"
 	mockUpdate "github.com/nicholas-fedor/goUpdater/internal/update/mocks"
@@ -98,7 +98,7 @@ func TestUpdateSuccessfulUpdate(t *testing.T) {
 	})
 
 	// Mock version fetcher
-	versionInfo := &download.GoVersionInfo{Version: "go1.21.0"}
+	versionInfo := &httpclient.GoVersionInfo{Version: "go1.21.0"}
 	mockVF.EXPECT().GetLatestVersionInfo().Return(versionInfo, nil)
 
 	// Mock filesystem operations for downloadLatest
@@ -147,7 +147,7 @@ func TestUpdateNoUpdateNeeded(t *testing.T) {
 	})
 
 	// Mock version fetcher
-	versionInfo := &download.GoVersionInfo{Version: "go1.21.0"}
+	versionInfo := &httpclient.GoVersionInfo{Version: "go1.21.0"}
 	mockVF.EXPECT().GetLatestVersionInfo().Return(versionInfo, nil)
 
 	err := updater.Update("/usr/local/go", false)
@@ -176,7 +176,7 @@ func TestUpdateAutoInstall(t *testing.T) {
 	})
 
 	// Mock version fetcher
-	versionInfo := &download.GoVersionInfo{Version: "go1.21.0"}
+	versionInfo := &httpclient.GoVersionInfo{Version: "go1.21.0"}
 	mockVF.EXPECT().GetLatestVersionInfo().Return(versionInfo, nil)
 
 	// Mock filesystem operations for downloadLatest
@@ -263,7 +263,7 @@ func TestUpdateUninstallPermissionDenied(t *testing.T) {
 	})
 
 	// Mock version fetcher
-	versionInfo := &download.GoVersionInfo{Version: "go1.21.0"}
+	versionInfo := &httpclient.GoVersionInfo{Version: "go1.21.0"}
 	mockVF.EXPECT().GetLatestVersionInfo().Return(versionInfo, nil)
 
 	// Mock filesystem operations for downloadLatest
@@ -304,7 +304,7 @@ func TestUpdateInstallationFailure(t *testing.T) {
 	})
 
 	// Mock version fetcher
-	versionInfo := &download.GoVersionInfo{Version: "go1.21.0"}
+	versionInfo := &httpclient.GoVersionInfo{Version: "go1.21.0"}
 	mockVF.EXPECT().GetLatestVersionInfo().Return(versionInfo, nil)
 
 	// Mock filesystem operations for downloadLatest
@@ -356,7 +356,7 @@ func TestUpdateVerificationFailure(t *testing.T) {
 	})
 
 	// Mock version fetcher
-	versionInfo := &download.GoVersionInfo{Version: "go1.21.0"}
+	versionInfo := &httpclient.GoVersionInfo{Version: "go1.21.0"}
 	mockVF.EXPECT().GetLatestVersionInfo().Return(versionInfo, nil)
 
 	// Mock filesystem operations for downloadLatest

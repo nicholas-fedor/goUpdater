@@ -47,18 +47,33 @@ type realExecutor struct{}
 
 // Execute runs the command.
 func (r *realExecutor) Execute(cmd *cobra.Command) error {
-	return fmt.Errorf("failed to execute command: %w", cmd.Execute())
+	err := cmd.Execute()
+	if err != nil {
+		return fmt.Errorf("failed to execute command: %w", err)
+	}
+
+	return nil
 }
 
 // setVerboseLogging sets the verbose logging based on the flag.
 func setVerboseLogging(cmd *cobra.Command, setter loggerSetter) {
-	verbose, _ := cmd.Flags().GetBool("verbose")
-	setter.SetVerbose(verbose)
+	verbose, err := cmd.Flags().GetBool("verbose")
+	if err != nil {
+		cmd.PrintErrf("error retrieving verbose flag: %v\n", err)
+		setter.SetVerbose(false)
+	} else {
+		setter.SetVerbose(verbose)
+	}
 }
 
 // executeRoot runs the root command.
 func executeRoot(rootCmd *cobra.Command, exec executor) error {
-	return fmt.Errorf("failed to execute root command: %w", exec.Execute(rootCmd))
+	err := exec.Execute(rootCmd)
+	if err != nil {
+		return fmt.Errorf("failed to execute root command: %w", err)
+	}
+
+	return nil
 }
 
 // NewRootCmd creates the base command when called without any subcommands.

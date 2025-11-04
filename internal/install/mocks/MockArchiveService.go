@@ -144,16 +144,16 @@ func (_c *MockArchiveService_ExtractVersion_Call) RunAndReturn(run func(archiveP
 }
 
 // Validate provides a mock function for the type MockArchiveService
-func (_mock *MockArchiveService) Validate(archivePath string) error {
-	ret := _mock.Called(archivePath)
+func (_mock *MockArchiveService) Validate(archivePath string, destDir string) error {
+	ret := _mock.Called(archivePath, destDir)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Validate")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(string) error); ok {
-		r0 = returnFunc(archivePath)
+	if returnFunc, ok := ret.Get(0).(func(string, string) error); ok {
+		r0 = returnFunc(archivePath, destDir)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -167,18 +167,24 @@ type MockArchiveService_Validate_Call struct {
 
 // Validate is a helper method to define mock.On call
 //   - archivePath string
-func (_e *MockArchiveService_Expecter) Validate(archivePath interface{}) *MockArchiveService_Validate_Call {
-	return &MockArchiveService_Validate_Call{Call: _e.mock.On("Validate", archivePath)}
+//   - destDir string
+func (_e *MockArchiveService_Expecter) Validate(archivePath interface{}, destDir interface{}) *MockArchiveService_Validate_Call {
+	return &MockArchiveService_Validate_Call{Call: _e.mock.On("Validate", archivePath, destDir)}
 }
 
-func (_c *MockArchiveService_Validate_Call) Run(run func(archivePath string)) *MockArchiveService_Validate_Call {
+func (_c *MockArchiveService_Validate_Call) Run(run func(archivePath string, destDir string)) *MockArchiveService_Validate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 string
 		if args[0] != nil {
 			arg0 = args[0].(string)
 		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -189,7 +195,7 @@ func (_c *MockArchiveService_Validate_Call) Return(err error) *MockArchiveServic
 	return _c
 }
 
-func (_c *MockArchiveService_Validate_Call) RunAndReturn(run func(archivePath string) error) *MockArchiveService_Validate_Call {
+func (_c *MockArchiveService_Validate_Call) RunAndReturn(run func(archivePath string, destDir string) error) *MockArchiveService_Validate_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -17,8 +17,8 @@ import (
 //nolint:interfacebloat // FileSystem interface requires all os package methods for full abstraction
 type FileSystem interface {
 	Stat(name string) (os.FileInfo, error)
-	Open(name string) (*os.File, error)
-	Create(name string) (*os.File, error)
+	Open(name string) (io.ReadWriteCloser, error)
+	Create(name string) (io.ReadWriteCloser, error)
 	RemoveAll(path string) error
 	MkdirAll(path string, perm os.FileMode) error
 	Chmod(name string, mode os.FileMode) error
@@ -29,7 +29,7 @@ type FileSystem interface {
 	EvalSymlinks(path string) (string, error)
 	Symlink(oldname, newname string) error
 	Link(oldname, newname string) error
-	OpenFile(name string, flag int, perm os.FileMode) (*os.File, error)
+	OpenFile(name string, flag int, perm os.FileMode) (io.ReadWriteCloser, error)
 	IsNotExist(err error) bool
 }
 
@@ -44,7 +44,7 @@ type OSTimeParser struct{}
 
 // OSJSONEncoder implements JSONEncoder using json.Encoder.
 type OSJSONEncoder struct {
-	// encoder *json.Encoder
+	encoder *json.Encoder
 }
 
 // OSErrorWriter implements ErrorWriter using fmt.Fprintf.
@@ -72,6 +72,8 @@ type ErrorWriter interface {
 }
 
 // NewOSJSONEncoder creates a new JSON encoder for the given writer.
-func NewOSJSONEncoder(w io.Writer) *json.Encoder {
-	return json.NewEncoder(w)
+func NewOSJSONEncoder(w io.Writer) *OSJSONEncoder {
+	return &OSJSONEncoder{
+		encoder: json.NewEncoder(w),
+	}
 }

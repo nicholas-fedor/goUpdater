@@ -27,26 +27,26 @@ func ValidateFilePath(path string) error {
 	}
 
 	if filepath.IsAbs(path) {
-		return fmt.Errorf("absolute path not allowed: %s: %w", path, ErrPathAbsolute)
+		return fmt.Errorf("absolute path not allowed: %s: %w", sanitizePath(path), ErrPathAbsolute)
 	}
 
 	// Check for dangerous characters that could be used for path manipulation
 	if strings.Contains(path, "..") {
-		return fmt.Errorf("path contains parent directory references: %s: %w", path, ErrPathContainsInvalid)
+		return fmt.Errorf("path contains parent directory references: %s: %w", sanitizePath(path), ErrPathContainsInvalid)
 	}
 
 	if strings.Contains(path, "\x00") {
-		return fmt.Errorf("path contains null bytes: %s: %w", path, ErrPathContainsInvalid)
+		return fmt.Errorf("path contains null bytes: %s: %w", sanitizePath(path), ErrPathContainsInvalid)
 	}
 
 	// Check for backslashes (not allowed on Unix-like systems)
 	if strings.Contains(path, "\\") {
-		return fmt.Errorf("path contains backslashes: %s: %w", path, ErrPathContainsInvalid)
+		return fmt.Errorf("path contains backslashes: %s: %w", sanitizePath(path), ErrPathContainsInvalid)
 	}
 
 	// Ensure the path is valid UTF-8
 	if !utf8.ValidString(path) {
-		return fmt.Errorf("path contains invalid UTF-8: %s: %w", path, ErrPathContainsInvalid)
+		return fmt.Errorf("path contains invalid UTF-8: %s: %w", sanitizePath(path), ErrPathContainsInvalid)
 	}
 
 	return nil
@@ -110,6 +110,11 @@ func ValidateVersionString(version string) error { //nolint:cyclop // detailed v
 		return fmt.Errorf("version missing semantic version after 'go': %s: %w", version, ErrVersionInvalid)
 	}
 
+	// Check that the semantic version part contains at least one dot (required for major.minor.patch format)
+	if !strings.Contains(semverPart, ".") {
+		return fmt.Errorf("version does not follow semantic versioning: %s: %w", version, ErrVersionInvalid)
+	}
+
 	// Validate semantic versioning format
 	// Allow both "v1.2.3" and "1.2.3" formats
 	var semverVersion string
@@ -159,6 +164,12 @@ func SanitizePath(path string) string {
 	cleaned = strings.TrimPrefix(cleaned, ".\\")
 
 	return cleaned
+}
+
+// sanitizePath returns a sanitized representation of the path for error messages.
+// It returns the basename to provide context without exposing full filesystem paths.
+func sanitizePath(path string) string {
+	return filepath.Base(path)
 }
 
 // IsValidPathChar checks if a character is valid for use in file paths.

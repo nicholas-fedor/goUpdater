@@ -70,6 +70,21 @@ func TestExtractVersion(t *testing.T) {
 			filename: "go1.21.0.linux-amd64",
 			want:     "go1.21.0",
 		},
+		{
+			name:     "empty string input",
+			filename: "",
+			want:     "",
+		},
+		{
+			name:     "outlandish numeric semver",
+			filename: "go999.999.999.linux-amd64.tar.gz",
+			want:     "go999.999.999",
+		},
+		{
+			name:     "release candidate with metadata",
+			filename: "go1.21.0-rc1-linux-amd64.tar.gz",
+			want:     "go1.21.0",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

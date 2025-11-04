@@ -15,7 +15,7 @@ import (
 	"github.com/nicholas-fedor/goUpdater/internal/exec"
 	"github.com/nicholas-fedor/goUpdater/internal/filesystem"
 	"github.com/nicholas-fedor/goUpdater/internal/logger"
-	"github.com/nicholas-fedor/goUpdater/internal/privileges"
+	"github.com/nicholas-fedor/goUpdater/internal/uninstall"
 )
 
 // NewUpdater creates a new Updater instance with the provided dependencies.
@@ -27,11 +27,12 @@ func NewUpdater(
 	uninstaller Uninstaller,
 	verifier Verifier,
 	privilegeManager PrivilegeManager,
+	versionFetcher VersionFetcher,
 ) *Updater {
 	return &Updater{
 		fileSystem:        fileSystem,
 		commandExecutor:   commandExecutor,
-		versionFetcher:    &DefaultVersionFetcher{},
+		versionFetcher:    versionFetcher,
 		archiveDownloader: archiveDownloader,
 		installer:         installer,
 		uninstaller:       uninstaller,
@@ -138,7 +139,7 @@ func (u *Updater) UpdateWithPrivileges(installDir string, autoInstall bool) erro
 	logger.Debugf("checkInstallation succeeded: installedVersion=%s", installedVersion)
 
 	// Proceed with elevation for the update operation
-	err = privileges.ElevateAndExecute(func() error { return u.Update(installDir, autoInstall) })
+	err = u.privilegeManager.ElevateAndExecute(func() error { return u.Update(installDir, autoInstall) })
 	if err != nil {
 		logger.Debugf("privileges.ElevateAndExecute failed: %v", err)
 
@@ -177,14 +178,16 @@ func (u *Updater) checkAndPrepare(installDir string, autoInstall bool) (string, 
 		}
 	}
 
-	logger.Debugf("latestVersion.Version before TrimPrefix: %q (len=%d)",
-		latestVersion.Version, len(latestVersion.Version))
 	logger.Debugf("latestVersion.Version starts with 'go': %t",
 		strings.HasPrefix(latestVersion.Version, "go"))
-	trimmedVersion := strings.TrimPrefix(latestVersion.Version, "go")
-	logger.Debugf("latestVersion.Version after TrimPrefix: %q (len=%d)",
-		trimmedVersion, len(trimmedVersion))
-	latestVersionStr := "go" + trimmedVersion
+
+	var latestVersionStr string
+	if !strings.HasPrefix(latestVersion.Version, "go") {
+		latestVersionStr = "go" + latestVersion.Version
+	} else {
+		latestVersionStr = latestVersion.Version
+	}
+
 	logger.Debugf("Latest available version: %s", latestVersionStr)
 
 	return installedVersion, latestVersionStr, nil
@@ -231,4 +234,80 @@ func (u *Updater) checkInstallation(installDir string, autoInstall bool) (string
 	}
 
 	return "", fmt.Errorf("%w: %s", ErrUnableToParseVersion, versionOutput)
+}
+
+// downloadLatest downloads the latest Go archive to a temporary directory.
+// It returns the archive path, temp directory path, and any error encountered.
+// The caller is responsible for cleaning up the temporary directory.
+func (u *Updater) downloadLatest() (string, string, error) {
+	tempDir, err := u.fileSystem.MkdirTemp("", "goUpdater-*")
+	if err != nil {
+		return "", "", &Error{
+			OperationPhase: "download",
+			CurrentStep:    "create_temp_dir",
+			Progress:       "creating temporary directory",
+			Err:            err,
+		}
+	}
+
+	archivePath, _, err := u.archiveDownloader.GetLatest(tempDir)
+	if err != nil {
+		_ = u.fileSystem.RemoveAll(tempDir)
+
+		return "", "", &Error{
+			OperationPhase: "download",
+			CurrentStep:    "download_archive",
+			Progress:       "downloading latest Go archive",
+			Err:            err,
+		}
+	}
+
+	return archivePath, tempDir, nil
+}
+
+// performUpdate handles the uninstallation of the existing Go installation and installation of the new version.
+// It takes the archive path, install directory, and installed version as parameters.
+// If installedVersion is empty, it skips the uninstallation step.
+func (u *Updater) performUpdate(archivePath, installDir, installedVersion string) error {
+	logger.Debugf("Performing update: archive=%s, installDir=%s, installedVersion=%s",
+		archivePath, installDir, installedVersion)
+
+	if installedVersion != "" {
+		logger.Debug("Uninstalling existing Go installation")
+
+		err := u.privilegeManager.ElevateAndExecute(func() error { return u.uninstaller.Remove(installDir) })
+		if err != nil {
+			if errors.Is(err, uninstall.ErrInstallDirEmpty) {
+				return &Error{
+					OperationPhase: "uninstall",
+					CurrentStep:    "validate_install_dir",
+					Progress:       "validating installation directory",
+					Err:            err,
+				}
+			}
+
+			return &Error{
+				OperationPhase: "uninstall",
+				CurrentStep:    "remove_existing",
+				Progress:       "removing existing Go installation",
+				Err:            err,
+			}
+		}
+	}
+
+	logger.Debug("Installing new Go version")
+
+	err := u.installer.Extract(archivePath, installDir, installedVersion)
+	if err != nil {
+		return &Error{
+			OperationPhase: "install",
+			CurrentStep:    "extract_archive",
+			Progress:       "extracting Go archive to installation directory",
+			Err:            err,
+		}
+	}
+
+	logger.Debug("Go installation completed successfully")
+
+	return nil
 }

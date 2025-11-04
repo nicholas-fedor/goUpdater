@@ -5,6 +5,7 @@ package install
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +14,7 @@ import (
 
 	mockFilesystem "github.com/nicholas-fedor/goUpdater/internal/filesystem/mocks"
 	mockInstall "github.com/nicholas-fedor/goUpdater/internal/install/mocks"
+	"github.com/nicholas-fedor/goUpdater/internal/types"
 )
 
 func TestInstall_InstallLatestVersion(t *testing.T) {
@@ -66,6 +68,7 @@ func TestInstall_InstallLatestVersion(t *testing.T) {
 				mockVer,
 				nil, // versionService not needed for this test
 				mockPriv,
+				nil, // reader not needed for this test
 			)
 
 			// Execute
@@ -131,6 +134,7 @@ func TestInstall_InstallFromArchive(t *testing.T) {
 				mockVer,
 				nil, // versionService not needed for this test
 				mockPriv,
+				nil, // reader not needed for this test
 			)
 
 			// Execute
@@ -235,6 +239,7 @@ func TestDirectExtract(t *testing.T) {
 				mockVer,
 				nil, // versionService not needed
 				nil, // privilegeService not needed
+				nil, // reader not needed
 			)
 
 			// Execute
@@ -268,7 +273,7 @@ func TestExtract(t *testing.T) {
 			installDir:  "/usr/local/go",
 			checksum:    "abc123",
 			mockSetup: func(mockArch *mockInstall.MockArchiveService, mockFS *mockFilesystem.MockFileSystem) {
-				mockArch.EXPECT().Validate("/tmp/go1.21.0.linux-amd64.tar.gz").Return(nil).Once()
+				mockArch.EXPECT().Validate("/tmp/go1.21.0.linux-amd64.tar.gz", "/usr/local").Return(nil).Once()
 				mockFS.EXPECT().MkdirAll("/usr/local", os.FileMode(directoryPermissions)).Return(nil).Once()
 				mockArch.EXPECT().Extract("/tmp/go1.21.0.linux-amd64.tar.gz", "/usr/local").Return(nil).Once()
 				mockArch.EXPECT().ExtractVersion("/tmp/go1.21.0.linux-amd64.tar.gz").Return("1.21.0").Once()
@@ -281,7 +286,7 @@ func TestExtract(t *testing.T) {
 			installDir:  "/usr/local/go",
 			checksum:    "abc123",
 			mockSetup: func(mockArch *mockInstall.MockArchiveService, _ *mockFilesystem.MockFileSystem) {
-				mockArch.EXPECT().Validate("/tmp/go1.21.0.linux-amd64.tar.gz").Return(ErrInvalidArchive).Once()
+				mockArch.EXPECT().Validate("/tmp/go1.21.0.linux-amd64.tar.gz", "/usr/local").Return(ErrInvalidArchive).Once()
 			},
 			expectedError: "failed to validate archive",
 		},
@@ -294,7 +299,7 @@ func TestExtract(t *testing.T) {
 				mockArch *mockInstall.MockArchiveService,
 				mockFS *mockFilesystem.MockFileSystem,
 			) {
-				mockArch.EXPECT().Validate("/tmp/go1.21.0.linux-amd64.tar.gz").Return(nil).Once()
+				mockArch.EXPECT().Validate("/tmp/go1.21.0.linux-amd64.tar.gz", "/usr/local").Return(nil).Once()
 				mockFS.EXPECT().MkdirAll("/usr/local", os.FileMode(directoryPermissions)).Return(nil).Once()
 				mockArch.EXPECT().Extract("/tmp/go1.21.0.linux-amd64.tar.gz", "/usr/local").Return(ErrExtractionError).Once()
 			},
@@ -318,6 +323,7 @@ func TestExtract(t *testing.T) {
 				nil, // verifyService not needed
 				nil, // versionService not needed
 				nil, // privilegeService not needed
+				nil, // reader not needed
 			)
 
 			// Execute
@@ -356,7 +362,7 @@ func TestExtractWithVerification(t *testing.T) {
 				mockFS *mockFilesystem.MockFileSystem,
 			) {
 				mockArch.EXPECT().ExtractVersion("/tmp/go1.21.0.linux-amd64.tar.gz").Return("1.21.0").Once()
-				mockArch.EXPECT().Validate("/tmp/go1.21.0.linux-amd64.tar.gz").Return(nil).Once()
+				mockArch.EXPECT().Validate("/tmp/go1.21.0.linux-amd64.tar.gz", "/usr/local").Return(nil).Once()
 				mockFS.EXPECT().MkdirAll("/usr/local", os.FileMode(directoryPermissions)).Return(nil).Once()
 				mockArch.EXPECT().Extract("/tmp/go1.21.0.linux-amd64.tar.gz", "/usr/local").Return(nil).Once()
 				mockArch.EXPECT().ExtractVersion("/tmp/go1.21.0.linux-amd64.tar.gz").Return("1.21.0").Once()
@@ -375,7 +381,7 @@ func TestExtractWithVerification(t *testing.T) {
 				mockFS *mockFilesystem.MockFileSystem,
 			) {
 				mockArch.EXPECT().ExtractVersion("/tmp/go1.21.0.linux-amd64.tar.gz").Return("1.21.0").Once()
-				mockArch.EXPECT().Validate("/tmp/go1.21.0.linux-amd64.tar.gz").Return(nil).Once()
+				mockArch.EXPECT().Validate("/tmp/go1.21.0.linux-amd64.tar.gz", "/usr/local").Return(nil).Once()
 				mockFS.EXPECT().MkdirAll("/usr/local", os.FileMode(directoryPermissions)).Return(nil).Once()
 				mockArch.EXPECT().Extract("/tmp/go1.21.0.linux-amd64.tar.gz", "/usr/local").Return(nil).Once()
 				mockArch.EXPECT().ExtractVersion("/tmp/go1.21.0.linux-amd64.tar.gz").Return("1.21.0").Once()
@@ -402,6 +408,7 @@ func TestExtractWithVerification(t *testing.T) {
 				mockVer,
 				nil, // versionService not needed
 				nil, // privilegeService not needed
+				nil, // reader not needed
 			)
 
 			// Execute
@@ -449,7 +456,7 @@ func TestLatest(t *testing.T) {
 					nil,
 				).Once()
 				mockArch.EXPECT().ExtractVersion("/tmp/goUpdater-install-123/go.tar.gz").Return("1.21.0").Once()
-				mockArch.EXPECT().Validate("/tmp/goUpdater-install-123/go.tar.gz").Return(nil).Once()
+				mockArch.EXPECT().Validate("/tmp/goUpdater-install-123/go.tar.gz", "/usr/local").Return(nil).Once()
 				mockFS.EXPECT().MkdirAll("/usr/local", os.FileMode(directoryPermissions)).Return(nil).Once()
 				mockArch.EXPECT().Extract("/tmp/goUpdater-install-123/go.tar.gz", "/usr/local").Return(nil).Once()
 				mockArch.EXPECT().ExtractVersion("/tmp/goUpdater-install-123/go.tar.gz").Return("1.21.0").Once()
@@ -505,6 +512,7 @@ func TestLatest(t *testing.T) {
 				mockVer,
 				nil, // versionService not needed
 				nil, // privilegeService not needed
+				nil, // reader not needed
 			)
 
 			// Execute
@@ -571,6 +579,7 @@ func TestPrepareInstallDir(t *testing.T) {
 				nil, // verifyService not needed
 				nil, // versionService not needed
 				nil, // privilegeService not needed
+				nil, // reader not needed
 			)
 
 			// Execute
@@ -602,7 +611,7 @@ func TestInstall_EdgeCases(t *testing.T) {
 		t.Parallel()
 		installer := NewInstallerWithDeps(
 			mockFilesystem.NewMockFileSystem(t),
-			nil, nil, nil, nil, nil,
+			nil, nil, nil, nil, nil, nil,
 		)
 
 		// This will panic because privilegeService is nil
@@ -625,7 +634,7 @@ func TestDirectExtract_EdgeCases(t *testing.T) {
 		mockArch.EXPECT().ExtractVersion("").Return("").Once()
 		mockVer.EXPECT().Installation("", "").Return(nil).Once()
 
-		installer := NewInstallerWithDeps(mockFS, mockArch, nil, mockVer, nil, nil)
+		installer := NewInstallerWithDeps(mockFS, mockArch, nil, mockVer, nil, nil, nil)
 
 		err := installer.DirectExtract("", "")
 		assert.NoError(t, err)
@@ -640,7 +649,7 @@ func TestDirectExtract_EdgeCases(t *testing.T) {
 		mockFS.EXPECT().MkdirAll("/existing", os.FileMode(directoryPermissions)).Return(nil).Once()
 		mockArch.EXPECT().Extract("/tmp/go.tar.gz", "/existing").Return(ErrPathConflict).Once()
 
-		installer := NewInstallerWithDeps(mockFS, mockArch, nil, mockVer, nil, nil)
+		installer := NewInstallerWithDeps(mockFS, mockArch, nil, mockVer, nil, nil, nil)
 
 		err := installer.DirectExtract("/tmp/go.tar.gz", "/existing/go")
 		require.Error(t, err)
@@ -661,7 +670,7 @@ func TestLatest_EdgeCases(t *testing.T) {
 		mockFS.EXPECT().RemoveAll("/tmp/test").Return(ErrCleanupFailed).Once()
 		mockDown.EXPECT().GetLatest("/tmp/test").Return("", "", ErrDownloadFailed).Once()
 
-		installer := NewInstallerWithDeps(mockFS, mockArch, mockDown, mockVer, nil, nil)
+		installer := NewInstallerWithDeps(mockFS, mockArch, mockDown, mockVer, nil, nil, nil)
 
 		err := installer.Latest("/usr/local/go")
 		require.Error(t, err)
@@ -672,10 +681,127 @@ func TestLatest_EdgeCases(t *testing.T) {
 
 func TestHandleExistingInstallation(t *testing.T) {
 	t.Parallel()
-	// HandleExistingInstallation calls os.Exit which cannot be unit tested
-	// without significant refactoring to return errors instead of calling os.Exit.
-	// This function is intended for command-line usage only and performs user interaction.
-	t.Skip("HandleExistingInstallation calls os.Exit and performs user interaction which cannot be unit tested")
+
+	tests := []struct {
+		name             string
+		installedVersion string
+		userInput        string
+		mockSetup        func(*mockInstall.MockDownloadService, *mockInstall.MockVersionService)
+		expectedError    string
+	}{
+		{
+			name:             "user accepts update",
+			installedVersion: "go1.20.0",
+			userInput:        "y\n",
+			mockSetup: func(mockDown *mockInstall.MockDownloadService, mockVer *mockInstall.MockVersionService) {
+				mockDown.EXPECT().GetLatestVersionInfo().Return(types.VersionInfo{Version: "go1.21.0"}, nil).Once()
+				mockVer.EXPECT().Compare("go1.20.0", "1.21.0").Return(-1, nil).Once()
+			},
+			expectedError: "",
+		},
+		{
+			name:             "user accepts update with yes",
+			installedVersion: "go1.20.0",
+			userInput:        "yes\n",
+			mockSetup: func(mockDown *mockInstall.MockDownloadService, mockVer *mockInstall.MockVersionService) {
+				mockDown.EXPECT().GetLatestVersionInfo().Return(types.VersionInfo{Version: "go1.21.0"}, nil).Once()
+				mockVer.EXPECT().Compare("go1.20.0", "1.21.0").Return(-1, nil).Once()
+			},
+			expectedError: "",
+		},
+		{
+			name:             "user rejects update",
+			installedVersion: "go1.20.0",
+			userInput:        "n\n",
+			mockSetup: func(mockDown *mockInstall.MockDownloadService, mockVer *mockInstall.MockVersionService) {
+				mockDown.EXPECT().GetLatestVersionInfo().Return(types.VersionInfo{Version: "go1.21.0"}, nil).Once()
+				mockVer.EXPECT().Compare("go1.20.0", "1.21.0").Return(-1, nil).Once()
+			},
+			expectedError: "",
+		},
+		{
+			name:             "user rejects update with no",
+			installedVersion: "go1.20.0",
+			userInput:        "no\n",
+			mockSetup: func(mockDown *mockInstall.MockDownloadService, mockVer *mockInstall.MockVersionService) {
+				mockDown.EXPECT().GetLatestVersionInfo().Return(types.VersionInfo{Version: "go1.21.0"}, nil).Once()
+				mockVer.EXPECT().Compare("go1.20.0", "1.21.0").Return(-1, nil).Once()
+			},
+			expectedError: "",
+		},
+		{
+			name:             "already up to date",
+			installedVersion: "go1.21.0",
+			userInput:        "",
+			mockSetup: func(mockDown *mockInstall.MockDownloadService, mockVer *mockInstall.MockVersionService) {
+				mockDown.EXPECT().GetLatestVersionInfo().Return(types.VersionInfo{Version: "go1.21.0"}, nil).Once()
+				mockVer.EXPECT().Compare("go1.21.0", "1.21.0").Return(0, nil).Once()
+			},
+			expectedError: "",
+		},
+		{
+			name:             "newer version installed",
+			installedVersion: "go1.22.0",
+			userInput:        "",
+			mockSetup: func(mockDown *mockInstall.MockDownloadService, mockVer *mockInstall.MockVersionService) {
+				mockDown.EXPECT().GetLatestVersionInfo().Return(types.VersionInfo{Version: "go1.21.0"}, nil).Once()
+				mockVer.EXPECT().Compare("go1.22.0", "1.21.0").Return(1, nil).Once()
+			},
+			expectedError: "",
+		},
+		{
+			name:             "fetch latest version fails",
+			installedVersion: "go1.20.0",
+			userInput:        "",
+			mockSetup: func(mockDown *mockInstall.MockDownloadService, _ *mockInstall.MockVersionService) {
+				mockDown.EXPECT().GetLatestVersionInfo().Return(types.VersionInfo{}, ErrNetworkError).Once()
+			},
+			expectedError: "failed to fetch latest Go version info: network error",
+		},
+		{
+			name:             "version comparison fails",
+			installedVersion: "go1.20.0",
+			userInput:        "",
+			mockSetup: func(mockDown *mockInstall.MockDownloadService, mockVer *mockInstall.MockVersionService) {
+				mockDown.EXPECT().GetLatestVersionInfo().Return(types.VersionInfo{Version: "go1.21.0"}, nil).Once()
+				mockVer.EXPECT().Compare("go1.20.0", "1.21.0").Return(0, ErrComparisonError).Once()
+			},
+			expectedError: "failed to compare versions: comparison error",
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			// Setup mocks
+			mockDown := mockInstall.NewMockDownloadService(t)
+			mockVer := mockInstall.NewMockVersionService(t)
+			testCase.mockSetup(mockDown, mockVer)
+
+			// Create installer with mock reader
+			reader := strings.NewReader(testCase.userInput)
+			installer := NewInstallerWithDeps(
+				mockFilesystem.NewMockFileSystem(t),
+				nil, // archiveService not needed
+				mockDown,
+				nil, // verifyService not needed
+				mockVer,
+				nil, // privilegeService not needed
+				reader,
+			)
+
+			// Execute
+			err := installer.HandleExistingInstallation("", testCase.installedVersion)
+
+			// Assert
+			if testCase.expectedError == "" {
+				assert.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), testCase.expectedError)
+			}
+		})
+	}
 }
 
 func TestCompare(t *testing.T) {

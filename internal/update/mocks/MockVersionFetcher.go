@@ -5,7 +5,7 @@
 package mocks
 
 import (
-	"github.com/nicholas-fedor/goUpdater/internal/download"
+	"github.com/nicholas-fedor/goUpdater/internal/http"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -37,23 +37,23 @@ func (_m *MockVersionFetcher) EXPECT() *MockVersionFetcher_Expecter {
 }
 
 // GetLatestVersionInfo provides a mock function for the type MockVersionFetcher
-func (_mock *MockVersionFetcher) GetLatestVersionInfo() (*download.GoVersionInfo, error) {
+func (_mock *MockVersionFetcher) GetLatestVersionInfo() (*http.GoVersionInfo, error) {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetLatestVersionInfo")
 	}
 
-	var r0 *download.GoVersionInfo
+	var r0 *http.GoVersionInfo
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func() (*download.GoVersionInfo, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func() (*http.GoVersionInfo, error)); ok {
 		return returnFunc()
 	}
-	if returnFunc, ok := ret.Get(0).(func() *download.GoVersionInfo); ok {
+	if returnFunc, ok := ret.Get(0).(func() *http.GoVersionInfo); ok {
 		r0 = returnFunc()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*download.GoVersionInfo)
+			r0 = ret.Get(0).(*http.GoVersionInfo)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func() error); ok {
@@ -81,12 +81,12 @@ func (_c *MockVersionFetcher_GetLatestVersionInfo_Call) Run(run func()) *MockVer
 	return _c
 }
 
-func (_c *MockVersionFetcher_GetLatestVersionInfo_Call) Return(goVersionInfo *download.GoVersionInfo, err error) *MockVersionFetcher_GetLatestVersionInfo_Call {
+func (_c *MockVersionFetcher_GetLatestVersionInfo_Call) Return(goVersionInfo *http.GoVersionInfo, err error) *MockVersionFetcher_GetLatestVersionInfo_Call {
 	_c.Call.Return(goVersionInfo, err)
 	return _c
 }
 
-func (_c *MockVersionFetcher_GetLatestVersionInfo_Call) RunAndReturn(run func() (*download.GoVersionInfo, error)) *MockVersionFetcher_GetLatestVersionInfo_Call {
+func (_c *MockVersionFetcher_GetLatestVersionInfo_Call) RunAndReturn(run func() (*http.GoVersionInfo, error)) *MockVersionFetcher_GetLatestVersionInfo_Call {
 	_c.Call.Return(run)
 	return _c
 }

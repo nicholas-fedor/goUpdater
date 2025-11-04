@@ -6,24 +6,51 @@
 package version
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/nicholas-fedor/goUpdater/internal/version"
 	"github.com/spf13/cobra"
 )
 
+var errMultipleFormatFlags = errors.New("multiple format flags specified: only one of --json, --short, --verbose, or --format can be used") //nolint:lll
+
 // determineDisplayFormat determines the display format based on flags.
-func determineDisplayFormat(jsonFlag, shortFlag, verboseFlag bool, format string) string {
-	switch {
-	case jsonFlag:
-		return "json"
-	case shortFlag:
-		return "short"
-	case verboseFlag:
-		return "verbose"
-	case format != "":
-		return format
-	default:
-		return "default"
+// It returns an error if multiple conflicting format flags are set.
+func determineDisplayFormat(jsonFlag, shortFlag, verboseFlag bool, format string) (string, error) {
+	count := 0
+
+	var chosenFormat string
+
+	if jsonFlag {
+		count++
+		chosenFormat = "json"
 	}
+
+	if shortFlag {
+		count++
+		chosenFormat = "short"
+	}
+
+	if verboseFlag {
+		count++
+		chosenFormat = "verbose"
+	}
+
+	if format != "" {
+		count++
+		chosenFormat = format
+	}
+
+	if count > 1 {
+		return "", errMultipleFormatFlags
+	}
+
+	if count == 0 {
+		return "default", nil
+	}
+
+	return chosenFormat, nil
 }
 
 // NewVersionCmd creates the version command.
@@ -46,12 +73,30 @@ Output formats:
 - verbose: All available information in tree-like structure
 - json: JSON formatted output`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			jsonFlag, _ := cmd.Flags().GetBool("json")
-			shortFlag, _ := cmd.Flags().GetBool("short")
-			verboseFlag, _ := cmd.Flags().GetBool("verbose")
-			format, _ := cmd.Flags().GetString("format")
+			jsonFlag, err := cmd.Flags().GetBool("json")
+			if err != nil {
+				return fmt.Errorf("failed to get flag %q: %w", "json", err)
+			}
 
-			displayFormat := determineDisplayFormat(jsonFlag, shortFlag, verboseFlag, format)
+			shortFlag, err := cmd.Flags().GetBool("short")
+			if err != nil {
+				return fmt.Errorf("failed to get flag %q: %w", "short", err)
+			}
+
+			verboseFlag, err := cmd.Flags().GetBool("verbose")
+			if err != nil {
+				return fmt.Errorf("failed to get flag %q: %w", "verbose", err)
+			}
+
+			format, err := cmd.Flags().GetString("format")
+			if err != nil {
+				return fmt.Errorf("failed to get flag %q: %w", "format", err)
+			}
+
+			displayFormat, err := determineDisplayFormat(jsonFlag, shortFlag, verboseFlag, format)
+			if err != nil {
+				return err
+			}
 
 			return version.RunVersion(cmd.OutOrStdout(), displayFormat)
 		},

@@ -15,6 +15,8 @@ var (
 	ErrArchiveNotRegular = errors.New("archive path is not a regular file")
 	// ErrTooManyFiles indicates the archive contains too many files.
 	ErrTooManyFiles = errors.New("archive contains too many files")
+	// ErrFileTooLarge indicates the archive contains a file that is too large.
+	ErrFileTooLarge = errors.New("archive contains file too large")
 )
 
 // ExtractionError represents archive extraction failures with contextual information.
@@ -49,6 +51,20 @@ func (e ExtractionError) Error() string {
 		sanitizedArchive, sanitizedDest, e.Context)
 }
 
+// Is implements the error interface for ExtractionError.
+// It checks if the target error is of the same type and has equivalent wrapped errors.
+func (e ExtractionError) Is(target error) bool {
+	if other, ok := target.(ExtractionError); ok {
+		return errors.Is(e.Err, other.Err)
+	}
+
+	if other, ok := target.(*ExtractionError); ok {
+		return errors.Is(e.Err, other.Err)
+	}
+
+	return false
+}
+
 // Unwrap returns the underlying error for compatibility with errors.Is and errors.As.
 func (e ExtractionError) Unwrap() error {
 	return e.Err
@@ -63,17 +79,17 @@ func (e SecurityError) Error() string {
 }
 
 // Is implements the error interface for SecurityError.
-// It checks if the target error is equivalent to this SecurityError.
+// It checks if the target error is of the same type and has equivalent wrapped errors.
 func (e SecurityError) Is(target error) bool {
 	if other, ok := target.(SecurityError); ok {
-		return e.AttemptedPath == other.AttemptedPath && e.Validation == other.Validation && errors.Is(e.Err, other.Err)
+		return errors.Is(e.Err, other.Err)
 	}
 
 	if other, ok := target.(*SecurityError); ok {
-		return e.AttemptedPath == other.AttemptedPath && e.Validation == other.Validation && errors.Is(e.Err, other.Err)
+		return errors.Is(e.Err, other.Err)
 	}
 
-	return errors.Is(e.Err, target)
+	return false
 }
 
 // Unwrap returns the underlying error for compatibility with errors.Is and errors.As.
@@ -88,6 +104,20 @@ func (e ValidationError) Error() string {
 	sanitizedPath := sanitizePathForError(e.FilePath)
 
 	return fmt.Sprintf("validation error: file=%s criteria=%s", sanitizedPath, e.Criteria)
+}
+
+// Is implements the error interface for ValidationError.
+// It checks if the target error is of the same type and has equivalent wrapped errors.
+func (e ValidationError) Is(target error) bool {
+	if other, ok := target.(ValidationError); ok {
+		return errors.Is(e.Err, other.Err)
+	}
+
+	if other, ok := target.(*ValidationError); ok {
+		return errors.Is(e.Err, other.Err)
+	}
+
+	return false
 }
 
 // Unwrap returns the underlying error for compatibility with errors.Is and errors.As.
