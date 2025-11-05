@@ -1,6 +1,6 @@
 module github.com/nicholas-fedor/goUpdater
 
-go 1.25.3
+go 1.25.4
 
 require (
 	github.com/rs/zerolog v1.34.0
