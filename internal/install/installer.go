@@ -17,7 +17,7 @@ const directoryPermissions = 0755 // Default directory permissions for installat
 func NewInstaller(fileSystem filesystem.FileSystem, reader io.Reader) *Installer {
 	return &Installer{
 		fs:               fileSystem,
-		archiveService:   nil,
+		ArchiveService:   nil,
 		downloadService:  nil,
 		verifyService:    nil,
 		versionService:   nil,
@@ -38,7 +38,7 @@ func NewInstallerWithDeps(
 ) *Installer {
 	return &Installer{
 		fs:               fileSystem,
-		archiveService:   archiveSvc,
+		ArchiveService:   archiveSvc,
 		downloadService:  downloadSvc,
 		verifyService:    verifySvc,
 		versionService:   versionSvc,
@@ -110,7 +110,7 @@ func (i *Installer) DirectExtract(archivePath, installDir string) error {
 
 	logger.Debugf("Extracting archive to: %s", filepath.Dir(installDir))
 
-	err = i.archiveService.Extract(archivePath, filepath.Dir(installDir))
+	err = i.ArchiveService.Extract(archivePath, filepath.Dir(installDir))
 	if err != nil {
 		return &InstallError{
 			Phase:     "extract",
@@ -120,7 +120,7 @@ func (i *Installer) DirectExtract(archivePath, installDir string) error {
 		}
 	}
 
-	expectedVersion := i.archiveService.ExtractVersion(archivePath)
+	expectedVersion := i.ArchiveService.ExtractVersion(archivePath)
 	logger.Debugf("Expected version from filename: %s", expectedVersion)
 
 	// Post-installation verification against expected version from archive filename
@@ -145,7 +145,9 @@ func (i *Installer) Extract(archivePath, installDir, _ string) error {
 	logger.Debugf("Starting Go installation: archive=%s, installDir=%s",
 		archivePath, installDir)
 
-	err := i.archiveService.Validate(archivePath, filepath.Dir(installDir))
+	logger.Debugf("Installer ArchiveService nil check: %t", i.ArchiveService == nil)
+
+	err := i.ArchiveService.Validate(archivePath, filepath.Dir(installDir))
 	if err != nil {
 		logger.Debugf("Extract: archiveService.Validate returned err: %v", err)
 
@@ -159,7 +161,7 @@ func (i *Installer) Extract(archivePath, installDir, _ string) error {
 
 	logger.Debugf("Extracting archive to: %s", filepath.Dir(installDir))
 
-	err = i.archiveService.Extract(archivePath, filepath.Dir(installDir))
+	err = i.ArchiveService.Extract(archivePath, filepath.Dir(installDir))
 	if err != nil {
 		logger.Debugf("Extract: archiveService.Extract returned err: %v", err)
 
@@ -171,7 +173,7 @@ func (i *Installer) Extract(archivePath, installDir, _ string) error {
 		}
 	}
 
-	extractedVersion := i.archiveService.ExtractVersion(archivePath)
+	extractedVersion := i.ArchiveService.ExtractVersion(archivePath)
 	logger.Debugf("Actual extracted version: %s", extractedVersion)
 
 	logger.Debug("Go installation completed successfully")
@@ -187,7 +189,7 @@ func (i *Installer) ExtractWithVerification(archivePath, installDir, checksum st
 		archivePath, installDir, checksum)
 
 	// Extract expected version from filename
-	expectedVersion := i.archiveService.ExtractVersion(archivePath)
+	expectedVersion := i.ArchiveService.ExtractVersion(archivePath)
 	logger.Debugf("Expected version from filename: %s", expectedVersion)
 
 	err := i.Extract(archivePath, installDir, checksum)

@@ -45,6 +45,7 @@ func (d *DefaultUninstaller) Remove(installDir string) error {
 	if err != nil {
 		if d.fs.IsNotExist(err) {
 			logger.Info("Go is already uninstalled")
+			logger.Debug("Directory does not exist, returning nil (successful uninstall)")
 
 			return nil
 		}
@@ -65,6 +66,8 @@ func (d *DefaultUninstaller) Remove(installDir string) error {
 	}
 
 	logger.Info("Go successfully uninstalled")
+
+	logger.Debug("Remove method completed successfully, returning nil")
 
 	return nil
 }

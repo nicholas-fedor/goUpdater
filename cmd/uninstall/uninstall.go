@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/nicholas-fedor/goUpdater/internal/logger"
 	"github.com/nicholas-fedor/goUpdater/internal/privileges"
 	"github.com/nicholas-fedor/goUpdater/internal/uninstall"
 	"github.com/spf13/cobra"
@@ -39,7 +40,13 @@ By default, this removes Go from /usr/local/go.`,
 					return fmt.Errorf("%w", errInstallDirEmpty)
 				}
 
-				return fmt.Errorf("uninstall failed: %w", err)
+				logger.Debugf("Uninstall result: err=%v, err==nil=%t", err, err == nil)
+
+				if err != nil {
+					return fmt.Errorf("uninstall failed: %w", err)
+				}
+
+				return nil
 			})
 		},
 	}

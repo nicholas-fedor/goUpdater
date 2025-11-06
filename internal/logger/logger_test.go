@@ -5,6 +5,7 @@ package logger
 
 import (
 	"bytes"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -53,12 +54,10 @@ func TestInfo(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			SetVerbose(testCase.verbose)
-
 			buf := &bytes.Buffer{}
-			SetWriter(buf)
+			logger := NewLogger(testCase.verbose, buf)
 
-			Info(testCase.message)
+			logger.Info(testCase.message)
 
 			output := stripTimestamp(stripANSI(buf.String()))
 			t.Logf("Test %s: raw=%q, ansi_stripped=%q, timestamp_stripped=%q, expected=%q",
@@ -95,12 +94,10 @@ func TestError(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			SetVerbose(testCase.verbose)
-
 			buf := &bytes.Buffer{}
-			SetWriter(buf)
+			logger := NewLogger(testCase.verbose, buf)
 
-			Error(testCase.message)
+			logger.Error(testCase.message)
 
 			output := stripTimestamp(stripANSI(buf.String()))
 			t.Logf("Test %s: raw=%q, ansi_stripped=%q, timestamp_stripped=%q, expected=%q",
@@ -137,12 +134,10 @@ func TestWarn(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			SetVerbose(testCase.verbose)
-
 			buf := &bytes.Buffer{}
-			SetWriter(buf)
+			logger := NewLogger(testCase.verbose, buf)
 
-			Warn(testCase.message)
+			logger.Warn(testCase.message)
 
 			output := stripTimestamp(stripANSI(buf.String()))
 			assert.Contains(t, output, testCase.expected)
@@ -177,12 +172,10 @@ func TestDebug(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			SetVerbose(testCase.verbose)
-
 			buf := &bytes.Buffer{}
-			SetWriter(buf)
+			logger := NewLogger(testCase.verbose, buf)
 
-			Debug(testCase.message)
+			logger.Debug(testCase.message)
 
 			output := stripTimestamp(stripANSI(buf.String()))
 			if testCase.expected == "" {
@@ -228,25 +221,22 @@ func TestLoggingFunctions(t *testing.T) {
 			expected: "Debug: test debugf 101\n",
 		},
 	}
-
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			SetVerbose(testCase.verbose)
-
 			buf := &bytes.Buffer{}
-			SetWriter(buf)
+			logger := NewLogger(testCase.verbose, buf)
 
 			switch testCase.callType {
 			case "Infof":
-				Infof("test %s %d", "infof", 123)
+				logger.Infof("test %s %d", "infof", 123)
 			case "Errorf":
-				Errorf("test %s %d", "errorf", 456)
+				logger.Errorf("test %s %d", "errorf", 456)
 			case "Warnf":
-				Warnf("test %s %d", "warnf", 789)
+				logger.Warnf("test %s %d", "warnf", 789)
 			case "Debugf":
-				Debugf("test %s %d", "debugf", 101)
+				logger.Debugf("test %s %d", "debugf", 101)
 			}
 
 			output := stripTimestamp(stripANSI(buf.String()))
@@ -259,23 +249,21 @@ func TestSetVerbose(t *testing.T) {
 	t.Parallel()
 
 	// Test setting verbose to true
-	SetVerbose(true)
-
 	buf := &bytes.Buffer{}
-	SetWriter(buf)
+	logger := NewLogger(false, buf)
+	logger.SetVerbose(true)
 
-	Debug("debug message")
+	logger.Debug("debug message")
 
 	output := stripTimestamp(stripANSI(buf.String()))
 	assert.Contains(t, output, "Debug: debug message\n")
 
 	// Test setting verbose to false
-	SetVerbose(false)
-
 	buf2 := &bytes.Buffer{}
-	SetWriter(buf2)
+	logger2 := NewLogger(true, buf2)
+	logger2.SetVerbose(false)
 
-	Debug("debug message")
+	logger2.Debug("debug message")
 
 	output2 := stripTimestamp(stripANSI(buf2.String()))
 	assert.Empty(t, output2)
@@ -285,18 +273,35 @@ func TestSetWriter(t *testing.T) {
 	t.Parallel()
 
 	buf := &bytes.Buffer{}
-	SetWriter(buf)
+	logger := NewLogger(false, os.Stderr)
+	logger.SetWriter(buf)
 
-	Info("test writer")
+	logger.Info("test writer")
 
 	output := stripTimestamp(stripANSI(buf.String()))
 	assert.Contains(t, output, "test writer\n")
-	SetVerbose(false) // Reset to default
 }
 
 func TestConcurrentLogging(t *testing.T) {
 	t.Parallel()
-	t.Skip("Skipping concurrent logging test due to race condition in test setup")
+
+	// Test concurrent logging with multiple logger instances
+	done := make(chan bool, 10)
+
+	for goroutineID := range 10 {
+		go func(id int) {
+			buf := &bytes.Buffer{}
+			logger := NewLogger(true, buf)
+			logger.Infof("Concurrent log message %d", id)
+
+			done <- true
+		}(goroutineID)
+	}
+
+	// Wait for all goroutines to complete
+	for range 10 {
+		<-done
+	}
 }
 
 func TestEdgeCases(t *testing.T) {
@@ -304,13 +309,13 @@ func TestEdgeCases(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		action  func()
+		action  func(logger *Logger)
 		verbose bool
 		check   func(t *testing.T, output string)
 	}{
 		{
 			name:    "empty message info",
-			action:  func() { Info("") },
+			action:  func(logger *Logger) { logger.Info("") },
 			verbose: false,
 			check: func(t *testing.T, output string) {
 				t.Helper()
@@ -319,7 +324,7 @@ func TestEdgeCases(t *testing.T) {
 		},
 		{
 			name:    "special characters",
-			action:  func() { Info("test\n\t\r") },
+			action:  func(logger *Logger) { logger.Info("test\n\t\r") },
 			verbose: false,
 			check: func(t *testing.T, output string) {
 				t.Helper()
@@ -328,7 +333,7 @@ func TestEdgeCases(t *testing.T) {
 		},
 		{
 			name:    "long message",
-			action:  func() { Info(strings.Repeat("a", 1000)) },
+			action:  func(logger *Logger) { logger.Info(strings.Repeat("a", 1000)) },
 			verbose: false,
 			check: func(t *testing.T, output string) {
 				t.Helper()
@@ -341,12 +346,10 @@ func TestEdgeCases(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			SetVerbose(testCase.verbose)
-
 			buf := &bytes.Buffer{}
-			SetWriter(buf)
+			logger := NewLogger(testCase.verbose, buf)
 
-			testCase.action()
+			testCase.action(logger)
 
 			output := stripTimestamp(stripANSI(buf.String()))
 			testCase.check(t, output)
@@ -358,15 +361,13 @@ func TestLogLevelFiltering(t *testing.T) {
 	t.Parallel()
 
 	// Non-verbose: only info, warn, error should appear
-	SetVerbose(false)
-
 	buf := &bytes.Buffer{}
-	SetWriter(buf)
+	logger := NewLogger(false, buf)
 
-	Debug("debug")
-	Info("info")
-	Warn("warn")
-	Error("error")
+	logger.Debug("debug")
+	logger.Info("info")
+	logger.Warn("warn")
+	logger.Error("error")
 
 	output := stripTimestamp(stripANSI(buf.String()))
 	assert.NotContains(t, output, "debug")
@@ -375,15 +376,13 @@ func TestLogLevelFiltering(t *testing.T) {
 	assert.Contains(t, output, "Error: error\n")
 
 	// Verbose: all levels should appear
-	SetVerbose(true)
-
 	buf2 := &bytes.Buffer{}
-	SetWriter(buf2)
+	logger2 := NewLogger(true, buf2)
 
-	Debug("debug")
-	Info("info")
-	Warn("warn")
-	Error("error")
+	logger2.Debug("debug")
+	logger2.Info("info")
+	logger2.Warn("warn")
+	logger2.Error("error")
 
 	output2 := stripTimestamp(stripANSI(buf2.String()))
 	assert.Contains(t, output2, "Debug: debug\n")

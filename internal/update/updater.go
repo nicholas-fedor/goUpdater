@@ -14,6 +14,7 @@ import (
 
 	"github.com/nicholas-fedor/goUpdater/internal/exec"
 	"github.com/nicholas-fedor/goUpdater/internal/filesystem"
+	"github.com/nicholas-fedor/goUpdater/internal/install"
 	"github.com/nicholas-fedor/goUpdater/internal/logger"
 	"github.com/nicholas-fedor/goUpdater/internal/uninstall"
 )
@@ -43,7 +44,7 @@ func NewUpdater(
 
 // Update performs a complete Go update: checks if Go is installed, compares versions,
 // downloads the latest version if needed, removes the existing installation,
-// installs the new version, verifies it, and logs success message.
+// installs the new version, verifies it, and logs success messages.
 // installDir is the directory where Go should be installed (e.g., "/usr/local/go").
 // autoInstall enables automatic installation if Go is not present.
 //
@@ -114,7 +115,7 @@ func (u *Updater) Update(installDir string, autoInstall bool) error {
 		}
 	}
 
-	logger.Debug("verify.Installation succeeded")
+	logger.Info("Go update completed successfully")
 
 	return nil
 }
@@ -297,6 +298,15 @@ func (u *Updater) performUpdate(archivePath, installDir, installedVersion string
 
 	logger.Debug("Installing new Go version")
 
+	logger.Debugf("Installer archiveService nil check: %t", u.installer == nil)
+
+	if u.installer != nil {
+		// Type assertion to access internal fields for debugging
+		if installer, ok := u.installer.(*install.Installer); ok {
+			logger.Debugf("Installer archiveService field nil: %t", installer.ArchiveService == nil)
+		}
+	}
+
 	err := u.installer.Extract(archivePath, installDir, installedVersion)
 	if err != nil {
 		return &Error{
@@ -307,7 +317,7 @@ func (u *Updater) performUpdate(archivePath, installDir, installedVersion string
 		}
 	}
 
-	logger.Debug("Go installation completed successfully")
+	logger.Info("Go installation completed successfully")
 
 	return nil
 }

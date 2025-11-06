@@ -62,4 +62,13 @@ type Updater struct {
 }
 
 // DefaultVersionFetcher implements VersionFetcher using the version package.
-type DefaultVersionFetcher struct{}
+type DefaultVersionFetcher struct {
+	getLatestVersionFunc func() (*httpclient.GoVersionInfo, error)
+}
+
+// NewDefaultVersionFetcher creates a new DefaultVersionFetcher with the default HTTP client.
+func NewDefaultVersionFetcher() *DefaultVersionFetcher {
+	return &DefaultVersionFetcher{
+		getLatestVersionFunc: httpclient.GetLatestVersion,
+	}
+}

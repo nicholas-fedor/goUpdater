@@ -23,19 +23,19 @@ import (
 // WARNING: This function performs real filesystem operations and should not be used in tests.
 func RunInstall(installDir, archivePath string) error {
 	// Create service implementations for dependency injection
-	archiveSvc := &archiveServiceImpl{
+	archiveSvc := &ArchiveServiceImpl{
 		extractor: archive.NewExtractor(&filesystem.OSFileSystem{}, &archive.DefaultProcessor{}),
 	}
-	downloadSvc := &downloadServiceImpl{
+	downloadSvc := &DownloadServiceImpl{
 		downloader: download.NewDownloader(
 			&filesystem.OSFileSystem{},
 			download.NewDefaultHTTPClient(),
 			&exec.OSCommandExecutor{},
-			&defaultVersionFetcherImpl{},
+			&DefaultVersionFetcherImpl{},
 		),
 	}
 	verifySvc := verify.NewVerifier(&filesystem.OSFileSystem{}, &exec.OSCommandExecutor{})
-	versionSvc := &versionServiceImpl{}
+	versionSvc := &VersionServiceImpl{}
 	privilegeSvc := privileges.NewPrivilegeManager(
 		&filesystem.OSFileSystem{},
 		privileges.OSPrivilegeManagerImpl{},

@@ -44,7 +44,7 @@ type PrivilegeService interface {
 // Installer handles Go installation operations with dependency injection for all external services.
 type Installer struct {
 	fs               filesystem.FileSystem
-	archiveService   ArchiveService
+	ArchiveService   ArchiveService
 	downloadService  DownloadService
 	verifyService    VerifyService
 	versionService   VersionService
@@ -52,18 +52,38 @@ type Installer struct {
 	reader           io.Reader // reader provides input reading functionality, typically os.Stdin in production
 }
 
-// downloadServiceImpl implements DownloadService using download package functions.
-type downloadServiceImpl struct {
+// DownloadServiceImpl implements DownloadService using download package functions.
+type DownloadServiceImpl struct {
 	downloader *download.Downloader
 }
 
-// archiveServiceImpl implements ArchiveService using archive package functions.
-type archiveServiceImpl struct {
+// NewDownloadServiceImpl creates a new DownloadServiceImpl.
+func NewDownloadServiceImpl(downloader *download.Downloader) *DownloadServiceImpl {
+	return &DownloadServiceImpl{downloader: downloader}
+}
+
+// ArchiveServiceImpl implements ArchiveService using archive package functions.
+type ArchiveServiceImpl struct {
 	extractor *archive.Extractor
 }
 
-// defaultVersionFetcherImpl implements VersionFetcher for download service.
-type defaultVersionFetcherImpl struct{}
+// NewArchiveServiceImpl creates a new ArchiveServiceImpl.
+func NewArchiveServiceImpl(extractor *archive.Extractor) *ArchiveServiceImpl {
+	return &ArchiveServiceImpl{extractor: extractor}
+}
 
-// versionServiceImpl implements VersionService using version package functions.
-type versionServiceImpl struct{}
+// DefaultVersionFetcherImpl implements VersionFetcher for download service.
+type DefaultVersionFetcherImpl struct{}
+
+// NewDefaultVersionFetcherImpl creates a new DefaultVersionFetcherImpl.
+func NewDefaultVersionFetcherImpl() *DefaultVersionFetcherImpl {
+	return &DefaultVersionFetcherImpl{}
+}
+
+// VersionServiceImpl implements VersionService using version package functions.
+type VersionServiceImpl struct{}
+
+// NewVersionServiceImpl creates a new VersionServiceImpl.
+func NewVersionServiceImpl() *VersionServiceImpl {
+	return &VersionServiceImpl{}
+}

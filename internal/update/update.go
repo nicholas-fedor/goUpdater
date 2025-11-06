@@ -1,11 +1,12 @@
 // Copyright © 2025 Nicholas Fedor
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package update provides orchestration logic for updating Go installations.
-// It coordinates downloading, installing, and verifying Go updates.
 package update
 
 import (
+	"os"
+
+	"github.com/nicholas-fedor/goUpdater/internal/archive"
 	"github.com/nicholas-fedor/goUpdater/internal/download"
 	"github.com/nicholas-fedor/goUpdater/internal/exec"
 	"github.com/nicholas-fedor/goUpdater/internal/filesystem"
@@ -30,6 +31,34 @@ func RunUpdate(updateDir string, autoInstall bool) error {
 // This helper function eliminates code duplication by providing a centralized
 // way to create an Updater with standard production dependencies.
 func createDefaultUpdater() *Updater {
+	// Create service implementations for dependency injection
+	archiveSvc := install.NewArchiveServiceImpl(
+		archive.NewExtractor(&filesystem.OSFileSystem{}, &archive.DefaultProcessor{}),
+	)
+	downloadSvc := install.NewDownloadServiceImpl(download.NewDownloader(
+		&filesystem.OSFileSystem{},
+		download.NewDefaultHTTPClient(),
+		&exec.OSCommandExecutor{},
+		&install.DefaultVersionFetcherImpl{},
+	))
+	verifySvc := verify.NewVerifier(&filesystem.OSFileSystem{}, &exec.OSCommandExecutor{})
+	versionSvc := &install.VersionServiceImpl{}
+	privilegeSvc := privileges.NewPrivilegeManager(
+		&filesystem.OSFileSystem{},
+		privileges.OSPrivilegeManagerImpl{},
+		&exec.OSCommandExecutor{},
+	)
+
+	installer := install.NewInstallerWithDeps(
+		&filesystem.OSFileSystem{},
+		archiveSvc,
+		downloadSvc,
+		verifySvc,
+		versionSvc,
+		privilegeSvc,
+		os.Stdin,
+	)
+
 	return NewUpdater(
 		&filesystem.OSFileSystem{},
 		&exec.OSCommandExecutor{},
@@ -37,17 +66,17 @@ func createDefaultUpdater() *Updater {
 			&filesystem.OSFileSystem{},
 			download.NewDefaultHTTPClient(),
 			&exec.OSCommandExecutor{},
-			&DefaultVersionFetcher{},
+			NewDefaultVersionFetcher(),
 		),
-		&install.Installer{},
+		installer,
 		uninstall.NewDefaultUninstaller(&filesystem.OSFileSystem{}),
-		&verify.Verifier{},
+		verifySvc,
 		privileges.NewPrivilegeManager(
 			&filesystem.OSFileSystem{},
 			&privileges.OSPrivilegeManagerImpl{},
 			&exec.OSCommandExecutor{},
 		),
-		&DefaultVersionFetcher{},
+		NewDefaultVersionFetcher(),
 	)
 }
 

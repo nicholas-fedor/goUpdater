@@ -35,6 +35,7 @@ type Extractor struct {
 	maxTotalSize int64
 	maxFileSize  int64
 	bufferSize   int
+	numWorkers   int // number of concurrent workers for file extraction
 }
 
 // NewGzipReader creates a new gzip reader.

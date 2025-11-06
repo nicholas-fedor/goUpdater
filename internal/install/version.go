@@ -10,7 +10,8 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-func (d *defaultVersionFetcherImpl) GetLatestVersion() (*httpclient.GoVersionInfo, error) {
+// GetLatestVersion retrieves the latest Go version information from the remote source.
+func (d *DefaultVersionFetcherImpl) GetLatestVersion() (*httpclient.GoVersionInfo, error) {
 	info, err := httpclient.GetLatestVersion()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest version: %w", err)
@@ -19,7 +20,8 @@ func (d *defaultVersionFetcherImpl) GetLatestVersion() (*httpclient.GoVersionInf
 	return info, nil
 }
 
-func (d *downloadServiceImpl) GetLatest(tempDir string) (string, string, error) {
+// GetLatest downloads the latest Go version archive to the specified temporary directory.
+func (d *DownloadServiceImpl) GetLatest(tempDir string) (string, string, error) {
 	archivePath, checksum, err := d.downloader.GetLatest(tempDir)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to download latest: %w", err)
@@ -31,8 +33,8 @@ func (d *downloadServiceImpl) GetLatest(tempDir string) (string, string, error) 
 // GetLatestVersionInfo retrieves the latest version information from the download service.
 // It returns a VersionInfo struct containing the version string on success.
 // On error, it returns the zero value of VersionInfo and the error.
-func (d *downloadServiceImpl) GetLatestVersionInfo() (types.VersionInfo, error) {
-	info, err := download.GetLatestVersionInfo(&defaultVersionFetcherImpl{})
+func (d *DownloadServiceImpl) GetLatestVersionInfo() (types.VersionInfo, error) {
+	info, err := download.GetLatestVersionInfo(&DefaultVersionFetcherImpl{})
 	if err != nil {
 		return types.VersionInfo{}, fmt.Errorf("failed to get latest version info: %w", err)
 	}
@@ -40,7 +42,8 @@ func (d *downloadServiceImpl) GetLatestVersionInfo() (types.VersionInfo, error) 
 	return types.VersionInfo{Version: info.Version}, nil
 }
 
-func (v *versionServiceImpl) Compare(installedVersion, latestVersion string) (int, error) {
+// Compare compares the installed version with the latest version and returns the comparison result.
+func (v *VersionServiceImpl) Compare(installedVersion, latestVersion string) (int, error) {
 	result, err := compare(installedVersion, latestVersion)
 	if err != nil {
 		return 0, fmt.Errorf("failed to compare versions: %w", err)

@@ -14,7 +14,11 @@ import (
 // It returns the version info for the current platform or an error if not found.
 // This function maintains backward compatibility by using the default HTTP client.
 func (d *DefaultVersionFetcher) GetLatestVersion() (*httpclient.GoVersionInfo, error) {
-	info, err := httpclient.GetLatestVersion()
+	if d.getLatestVersionFunc == nil {
+		return nil, ErrGetLatestVersionFuncNotSet
+	}
+
+	info, err := d.getLatestVersionFunc()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest version: %w", err)
 	}

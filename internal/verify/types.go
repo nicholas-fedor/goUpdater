@@ -119,7 +119,12 @@ func (v *Verifier) GetInstalledVersionCore(installDir string) (string, error) {
 	ctx := context.Background()
 	cmd := v.executor.CommandContext(ctx, goBinPath, "version")
 
+	logger.Debug("Starting verification command")
+
 	output, err := cmd.Output()
+
+	logger.Debug("Verification command completed")
+
 	if err != nil {
 		logger.Debugf("Failed to execute 'go version' command: %v", err)
 
