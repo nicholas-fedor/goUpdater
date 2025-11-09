@@ -667,8 +667,7 @@ func TestOSFileSystem_IsNotExist(t *testing.T) {
 
 	// Test with other errors
 	assert.False(t, fileSystem.IsNotExist(os.ErrPermission))
-	//nolint:lll // line length exceeds limit due to test comment
-	assert.False(t, fileSystem.IsNotExist(errors.New("some other error"))) //nolint:err113 // test case for non-os.ErrNotExist error
+	assert.False(t, fileSystem.IsNotExist(errors.New("some other error")))
 	assert.False(t, fileSystem.IsNotExist(nil))
 }
 
@@ -1031,7 +1030,7 @@ func TestFileOperationError_Error(t *testing.T) {
 			err: &FileOperationError{
 				Path:      "/test",
 				Operation: "unknown",
-				Err:       errors.New("some error"), //nolint:err113 // test case for generic error
+				Err:       errors.New("some error"),
 			},
 			expected: "file operation failed: some error",
 		},

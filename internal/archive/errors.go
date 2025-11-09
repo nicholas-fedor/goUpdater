@@ -17,6 +17,10 @@ var (
 	ErrTooManyFiles = errors.New("archive contains too many files")
 	// ErrFileTooLarge indicates the archive contains a file that is too large.
 	ErrFileTooLarge = errors.New("archive contains file too large")
+	// ErrArchivePathEmpty indicates the archive path is empty.
+	ErrArchivePathEmpty = errors.New("archive path cannot be empty")
+	// ErrDestDirEmpty indicates the destination directory is empty.
+	ErrDestDirEmpty = errors.New("destination directory cannot be empty")
 )
 
 // ExtractionError represents archive extraction failures with contextual information.

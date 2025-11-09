@@ -125,6 +125,8 @@ func (e *Extractor) extractFileChunk(
 		// First chunk: create parent directory and open file
 		logger.Debugf("Opening file for first chunk: %s", targetPath)
 
+		logger.Debugf("Calling MkdirAll for %s", filepath.Dir(targetPath))
+
 		err := e.fs.MkdirAll(filepath.Dir(targetPath), defaultDirPerm) // #nosec G301
 		if err != nil {
 			logger.Debugf("MkdirAll failed for %s: %v", targetPath, err)
@@ -132,12 +134,18 @@ func (e *Extractor) extractFileChunk(
 			return fmt.Errorf("mkdirall failed: %w", err)
 		}
 
+		logger.Debugf("MkdirAll succeeded for %s", targetPath)
+
+		logger.Debugf("Calling OpenFile for %s", targetPath)
+
 		file, err = e.fs.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, defaultFilePerm) // #nosec G302
 		if err != nil {
 			logger.Debugf("OpenFile failed for %s: %v", targetPath, err)
 
 			return fmt.Errorf("open file failed: %w", err)
 		}
+
+		logger.Debugf("OpenFile succeeded for %s", targetPath)
 
 		openFiles[targetPath] = file
 		logger.Debugf("Opened file: %s", targetPath)
@@ -157,6 +165,8 @@ func (e *Extractor) extractFileChunk(
 		return fmt.Errorf("write failed: %w", err)
 	}
 
+	logger.Debugf("Write succeeded for %s", targetPath)
+
 	if eof {
 		// Last chunk: close file and set permissions
 		logger.Debugf("Closing file after last chunk: %s", targetPath)
@@ -171,6 +181,8 @@ func (e *Extractor) extractFileChunk(
 			return fmt.Errorf("close failed: %w", err)
 		}
 
+		logger.Debugf("Close succeeded for %s", targetPath)
+
 		// Set correct permissions with timeout to prevent hanging
 		logger.Debugf("Setting permissions for file: %s", targetPath)
 
@@ -181,6 +193,8 @@ func (e *Extractor) extractFileChunk(
 		defer cancel()
 
 		done := make(chan error, 1)
+
+		logger.Debugf("Calling Chmod for %s", targetPath)
 
 		go func() {
 			done <- e.fs.Chmod(targetPath, mode)
@@ -194,7 +208,7 @@ func (e *Extractor) extractFileChunk(
 				return fmt.Errorf("chmod failed: %w", err)
 			}
 
-			logger.Debugf("Set permissions for file: %s", targetPath)
+			logger.Debugf("Chmod succeeded for %s", targetPath)
 		case <-ctx.Done():
 			logger.Warnf("Chmod timed out for file: %s", targetPath)
 		}
@@ -293,9 +307,6 @@ func (e *Extractor) Extract(archivePath, destDir string) error {
 
 	var waitGroup sync.WaitGroup
 
-	defer close(workChan)
-	defer waitGroup.Wait()
-
 	// Start workers
 	for range e.numWorkers {
 		waitGroup.Add(1)
@@ -369,6 +380,9 @@ func (e *Extractor) Extract(archivePath, destDir string) error {
 
 	logger.Debugf("Tar processing loop took: %v", time.Since(loopStart))
 
+	// Close workChan after tar processing loop completes
+	close(workChan)
+
 	logger.Debug("Starting worker synchronization")
 	// Wait for workers to finish
 	waitGroup.Wait()
@@ -387,11 +401,46 @@ func (e *Extractor) Extract(archivePath, destDir string) error {
 	return nil
 }
 
-// Validate checks if the archive file exists and is a regular file.
-// It returns an error if the archive path does not exist or is not a regular file.
+// Validate checks if the archive file exists and is a regular file, and validates the destination directory.
+// It returns an error if the archive path is empty, does not exist or is not a regular file,
+// or if the destination directory is empty or does not exist.
 func (e *Extractor) Validate(archivePath, destDir string) error {
 	logger.Debugf("Extractor.Validate: validating archive: %s", archivePath)
 	logger.Debugf("Extractor.Validate: destination: %s", destDir)
+
+	if archivePath == "" {
+		return &ExtractionError{
+			ArchivePath: archivePath,
+			Destination: destDir,
+			Context:     "validating archive path",
+			Err:         ErrArchivePathEmpty,
+		}
+	}
+
+	if destDir == "" {
+		return &ExtractionError{
+			ArchivePath: archivePath,
+			Destination: destDir,
+			Context:     "validating destination directory",
+			Err:         ErrDestDirEmpty,
+		}
+	}
+
+	_, err := e.fs.Stat(destDir)
+	if err != nil {
+		logger.Debugf("Extractor.Validate: Stat failed for destDir %s: %v", destDir, err)
+
+		return &ExtractionError{
+			ArchivePath: archivePath,
+			Destination: destDir,
+			Context:     "validating destination directory",
+			Err: &ValidationError{
+				FilePath: destDir,
+				Criteria: "directory existence",
+				Err:      err,
+			},
+		}
+	}
 
 	info, err := e.fs.Stat(archivePath)
 	if err != nil {
@@ -754,6 +803,8 @@ func (e *Extractor) extractFileInChunks(
 	destDir, archivePath string,
 	workChan chan<- fileExtractionWork,
 ) error {
+	logger.Debugf("extractFileInChunks: starting for %s, size %d", targetPath, size)
+
 	buffer := make([]byte, e.bufferSize)
 	totalRead := int64(0)
 	readCount := 0
@@ -774,8 +825,13 @@ func (e *Extractor) extractFileInChunks(
 
 		readCount++
 
+		logger.Debugf("extractFileInChunks: reading chunk %d, chunkSize %d", readCount, chunkSize)
 		bytesRead, err := io.ReadFull(tarReader, buffer[:chunkSize])
+		logger.Debugf("extractFileInChunks: ReadFull returned bytesRead %d, err %v", bytesRead, err)
+
 		if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+			logger.Debugf("extractFileInChunks: error reading chunk: %v", err)
+
 			return &ExtractionError{
 				ArchivePath: archivePath,
 				Destination: destDir,
@@ -786,10 +842,13 @@ func (e *Extractor) extractFileInChunks(
 
 		totalRead += int64(bytesRead)
 		isEOF := totalRead >= size
+		logger.Debugf("extractFileInChunks: totalRead %d, isEOF %v", totalRead, isEOF)
 
 		// Allocate new slice to prevent data corruption from buffer reuse
 		data := make([]byte, bytesRead)
 		copy(data, buffer[:bytesRead])
+
+		logger.Debugf("extractFileInChunks: sending work for %s, data len %d, eof %v", targetPath, len(data), isEOF)
 
 		select {
 		case workChan <- fileExtractionWork{
@@ -806,6 +865,8 @@ func (e *Extractor) extractFileInChunks(
 			break
 		}
 	}
+
+	logger.Debugf("extractFileInChunks: completed for %s", targetPath)
 
 	return nil
 }

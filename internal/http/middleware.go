@@ -110,7 +110,7 @@ func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	if err != nil {
 		logger.Errorf("HTTP request failed: %v", err)
 
-		return nil, err //nolint:wrapcheck // forwarding error from wrapped RoundTripper
+		return nil, err
 	}
 
 	logger.Infof("HTTP response: %d", resp.StatusCode)
@@ -234,5 +234,5 @@ func (c *circuitBreakerRoundTripper) RoundTrip(req *http.Request) (*http.Respons
 		c.cb.failures = 0
 	}
 
-	return resp, err //nolint:wrapcheck // circuit breaker middleware wraps errors
+	return resp, err
 }

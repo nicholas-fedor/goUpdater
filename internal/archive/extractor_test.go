@@ -239,6 +239,7 @@ func TestExtractor_Extract(t *testing.T) { //nolint:maintidx
 		{
 			name: "successful extraction",
 			setupMocks: func(filesystem *mockFilesystem.MockFileSystem, processor *mockProcessor, _ *mockTarReader) {
+				filesystem.EXPECT().Stat("/tmp/dest").Return(&mockFileInfo{name: "dest", mode: os.ModeDir}, nil)
 				filesystem.EXPECT().Stat("archive.tar.gz").Return(&mockFileInfo{name: "archive.tar.gz", mode: 0644}, nil)
 
 				mockFile := &mockFile{}
@@ -258,6 +259,7 @@ func TestExtractor_Extract(t *testing.T) { //nolint:maintidx
 		{
 			name: "validation failure",
 			setupMocks: func(filesystem *mockFilesystem.MockFileSystem, _ *mockProcessor, _ *mockTarReader) {
+				filesystem.EXPECT().Stat("/tmp/dest").Return(&mockFileInfo{name: "dest", mode: os.ModeDir}, nil)
 				filesystem.EXPECT().Stat("archive.tar.gz").Return(nil, os.ErrNotExist)
 			},
 			wantErr: true,
@@ -272,6 +274,7 @@ func TestExtractor_Extract(t *testing.T) { //nolint:maintidx
 		{
 			name: "file open failure",
 			setupMocks: func(filesystem *mockFilesystem.MockFileSystem, _ *mockProcessor, _ *mockTarReader) {
+				filesystem.EXPECT().Stat("/tmp/dest").Return(&mockFileInfo{name: "dest", mode: os.ModeDir}, nil)
 				filesystem.EXPECT().Stat("archive.tar.gz").Return(&mockFileInfo{name: "archive.tar.gz", mode: 0644}, nil)
 				filesystem.EXPECT().Open("archive.tar.gz").Return(nil, os.ErrPermission)
 			},
@@ -287,6 +290,7 @@ func TestExtractor_Extract(t *testing.T) { //nolint:maintidx
 		{
 			name: "gzip reader creation failure",
 			setupMocks: func(filesystem *mockFilesystem.MockFileSystem, processor *mockProcessor, _ *mockTarReader) {
+				filesystem.EXPECT().Stat("/tmp/dest").Return(&mockFileInfo{name: "dest", mode: os.ModeDir}, nil)
 				filesystem.EXPECT().Stat("archive.tar.gz").Return(&mockFileInfo{name: "archive.tar.gz", mode: 0644}, nil)
 
 				mockFile := &mockFile{}
@@ -305,6 +309,7 @@ func TestExtractor_Extract(t *testing.T) { //nolint:maintidx
 		{
 			name: "tar header read failure",
 			setupMocks: func(filesystem *mockFilesystem.MockFileSystem, processor *mockProcessor, tarReader *mockTarReader) {
+				filesystem.EXPECT().Stat("/tmp/dest").Return(&mockFileInfo{name: "dest", mode: os.ModeDir}, nil)
 				filesystem.EXPECT().Stat("archive.tar.gz").Return(&mockFileInfo{name: "archive.tar.gz", mode: 0644}, nil)
 
 				mockFile := &mockFile{}
@@ -328,6 +333,7 @@ func TestExtractor_Extract(t *testing.T) { //nolint:maintidx
 		{
 			name: "too many files",
 			setupMocks: func(filesystem *mockFilesystem.MockFileSystem, processor *mockProcessor, tarReader *mockTarReader) {
+				filesystem.EXPECT().Stat("/tmp/dest").Return(&mockFileInfo{name: "dest", mode: os.ModeDir}, nil)
 				filesystem.EXPECT().Stat("archive.tar.gz").Return(&mockFileInfo{name: "archive.tar.gz", mode: 0644}, nil)
 
 				archiveFile := &mockFile{}
@@ -359,6 +365,7 @@ func TestExtractor_Extract(t *testing.T) { //nolint:maintidx
 		{
 			name: "file too large",
 			setupMocks: func(filesystem *mockFilesystem.MockFileSystem, processor *mockProcessor, tarReader *mockTarReader) {
+				filesystem.EXPECT().Stat("/tmp/dest").Return(&mockFileInfo{name: "dest", mode: os.ModeDir}, nil)
 				filesystem.EXPECT().Stat("archive.tar.gz").Return(&mockFileInfo{name: "archive.tar.gz", mode: 0644}, nil)
 
 				mockFile := &mockFile{}
@@ -385,6 +392,7 @@ func TestExtractor_Extract(t *testing.T) { //nolint:maintidx
 		{
 			name: "total size too large",
 			setupMocks: func(filesystem *mockFilesystem.MockFileSystem, processor *mockProcessor, tarReader *mockTarReader) {
+				filesystem.EXPECT().Stat("/tmp/dest").Return(&mockFileInfo{name: "dest", mode: os.ModeDir}, nil)
 				filesystem.EXPECT().Stat("archive.tar.gz").Return(&mockFileInfo{name: "archive.tar.gz", mode: 0644}, nil)
 
 				archiveFile := &mockFile{}
@@ -485,6 +493,7 @@ func TestExtractor_Validate(t *testing.T) {
 			name:        "valid regular file",
 			archivePath: "archive.tar.gz",
 			setupMocks: func(fs *mockFilesystem.MockFileSystem) {
+				fs.EXPECT().Stat("/tmp/dest").Return(&mockFileInfo{name: "dest", mode: os.ModeDir}, nil)
 				fs.EXPECT().Stat("archive.tar.gz").Return(&mockFileInfo{name: "archive.tar.gz", mode: 0644}, nil)
 			},
 			wantErr:   false,
@@ -494,6 +503,7 @@ func TestExtractor_Validate(t *testing.T) {
 			name:        "file does not exist",
 			archivePath: "nonexistent.tar.gz",
 			setupMocks: func(fs *mockFilesystem.MockFileSystem) {
+				fs.EXPECT().Stat("/tmp/dest").Return(&mockFileInfo{name: "dest", mode: os.ModeDir}, nil)
 				fs.EXPECT().Stat("nonexistent.tar.gz").Return(nil, os.ErrNotExist)
 			},
 			wantErr: true,
@@ -509,6 +519,7 @@ func TestExtractor_Validate(t *testing.T) {
 			name:        "path is directory",
 			archivePath: "directory",
 			setupMocks: func(fs *mockFilesystem.MockFileSystem) {
+				fs.EXPECT().Stat("/tmp/dest").Return(&mockFileInfo{name: "dest", mode: os.ModeDir}, nil)
 				fs.EXPECT().Stat("directory").Return(&mockFileInfo{name: "directory", mode: os.ModeDir}, nil)
 			},
 			wantErr: true,
@@ -524,6 +535,7 @@ func TestExtractor_Validate(t *testing.T) {
 			name:        "stat error",
 			archivePath: "error.tar.gz",
 			setupMocks: func(fs *mockFilesystem.MockFileSystem) {
+				fs.EXPECT().Stat("/tmp/dest").Return(&mockFileInfo{name: "dest", mode: os.ModeDir}, nil)
 				fs.EXPECT().Stat("error.tar.gz").Return(nil, os.ErrPermission)
 			},
 			wantErr: true,

@@ -42,8 +42,33 @@ func RunInstall(installDir, archivePath string) error {
 		&exec.OSCommandExecutor{},
 	)
 
-	installer := NewInstallerWithDeps(
+	return RunInstallWithDeps(
 		&filesystem.OSFileSystem{},
+		archiveSvc,
+		downloadSvc,
+		verifySvc,
+		versionSvc,
+		privilegeSvc,
+		installDir,
+		archivePath,
+	)
+}
+
+// RunInstallWithDeps executes the install command logic with injected dependencies.
+// This function is testable and allows for dependency injection in unit tests.
+// installDir is the directory where Go should be installed (e.g., "/usr/local/go").
+// archivePath is the path to the archive file to install from, or empty to install the latest version.
+func RunInstallWithDeps(
+	fs filesystem.FileSystem,
+	archiveSvc ArchiveService,
+	downloadSvc DownloadService,
+	verifySvc VerifyService,
+	versionSvc VersionService,
+	privilegeSvc PrivilegeService,
+	installDir, archivePath string,
+) error {
+	installer := NewInstallerWithDeps(
+		fs,
 		archiveSvc,
 		downloadSvc,
 		verifySvc,

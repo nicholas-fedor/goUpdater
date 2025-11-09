@@ -77,7 +77,7 @@ type testRoundTripper struct {
 
 func (t *testRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	if t.wrapped != nil {
-		return t.wrapped.RoundTrip(req) //nolint:wrapcheck // test helper
+		return t.wrapped.RoundTrip(req)
 	}
 
 	return &http.Response{StatusCode: http.StatusOK}, nil
