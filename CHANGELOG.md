@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **deps**: Update docusaurus monorepo to v3.9.2 ([#15](https://github.com/linarr-org/linarr/issues/15))
 
+- **deps**: Update module github.com/spf13/cobra to v1.10.2 ([#83](https://github.com/linarr-org/linarr/issues/83))
+
 
 ### Documentation
 
@@ -22,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update executable name in installation instructions
 
 - Remove @layer declaration to fix CSS minimizer warning ([#8](https://github.com/linarr-org/linarr/issues/8))
+
+- **changelog**: Update changelog for main ([#82](https://github.com/linarr-org/linarr/issues/82))
 
 
 ### Features
@@ -180,6 +184,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **deps**: Update actions/setup-node digest to 395ad32 ([#81](https://github.com/linarr-org/linarr/issues/81))
 
 - **deps**: Update dependency go to v1.25.5 ([#77](https://github.com/linarr-org/linarr/issues/77))
+
+- **deps**: Update peter-evans/create-pull-request digest to 22a9089 ([#85](https://github.com/linarr-org/linarr/issues/85))
+
+- **deps**: Update github/codeql-action digest to cf1bb45 ([#84](https://github.com/linarr-org/linarr/issues/84))
 
 
 ### Testing
