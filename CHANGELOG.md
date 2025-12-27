@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **deps**: Update docusaurus monorepo to v3.9.2 ([#15](https://github.com/linarr-org/linarr/issues/15))
 
+- **deps**: Update module github.com/spf13/cobra to v1.10.2 ([#83](https://github.com/linarr-org/linarr/issues/83))
+
+- **deps**: Update module github.com/schollz/progressbar/v3 to v3.19.0 ([#105](https://github.com/linarr-org/linarr/issues/105))
+
 
 ### Documentation
 
@@ -22,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update executable name in installation instructions
 
 - Remove @layer declaration to fix CSS minimizer warning ([#8](https://github.com/linarr-org/linarr/issues/8))
+
+- **changelog**: Update changelog for main ([#82](https://github.com/linarr-org/linarr/issues/82))
 
 
 ### Features
@@ -180,6 +186,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **deps**: Update actions/setup-node digest to 395ad32 ([#81](https://github.com/linarr-org/linarr/issues/81))
 
 - **deps**: Update dependency go to v1.25.5 ([#77](https://github.com/linarr-org/linarr/issues/77))
+
+- **deps**: Update peter-evans/create-pull-request digest to 22a9089 ([#85](https://github.com/linarr-org/linarr/issues/85))
+
+- **deps**: Update github/codeql-action digest to cf1bb45 ([#84](https://github.com/linarr-org/linarr/issues/84))
+
+- **deps**: Update actions/checkout digest to 8e8c483 ([#78](https://github.com/linarr-org/linarr/issues/78))
+
+- **deps**: Update react monorepo to v19.2.1 ([#87](https://github.com/linarr-org/linarr/issues/87))
+
+- **deps**: Update golangci/golangci-lint-action digest to ca80bee ([#88](https://github.com/linarr-org/linarr/issues/88))
+
+- **deps**: Update peter-evans/create-pull-request digest to 41c0e4b ([#89](https://github.com/linarr-org/linarr/issues/89))
+
+- **deps**: Update codecov/codecov-action digest to 671740a ([#90](https://github.com/linarr-org/linarr/issues/90))
+
+- **deps**: Update peter-evans/create-pull-request digest to 98357b1 ([#91](https://github.com/linarr-org/linarr/issues/91))
+
+- **deps**: Update peter-evans/create-pull-request digest to 0979079 ([#92](https://github.com/linarr-org/linarr/issues/92))
+
+- **deps**: Update cimg/go:1.25.5 docker digest to 9a8ad8c ([#93](https://github.com/linarr-org/linarr/issues/93))
+
+- **deps**: Update securego/gosec action to v2.22.11 ([#94](https://github.com/linarr-org/linarr/issues/94))
+
+- **deps**: Update github/codeql-action digest to 1b168cd ([#95](https://github.com/linarr-org/linarr/issues/95))
+
+- **deps**: Update orhun/git-cliff-action digest to e16f179 ([#96](https://github.com/linarr-org/linarr/issues/96))
+
+- **deps**: Update react monorepo to v19.2.2 ([#97](https://github.com/linarr-org/linarr/issues/97))
+
+- **deps**: Update react monorepo to v19.2.3 ([#98](https://github.com/linarr-org/linarr/issues/98))
+
+- **deps**: Update golangci/golangci-lint-action digest to ef75033 ([#99](https://github.com/linarr-org/linarr/issues/99))
+
+- **deps**: Update github/codeql-action digest to 5d4e8d1 ([#100](https://github.com/linarr-org/linarr/issues/100))
+
+- **deps**: Update actions/setup-go digest to 4aaadf4 ([#101](https://github.com/linarr-org/linarr/issues/101))
+
+- **deps**: Update nicholas-fedor/govulncheck-action digest to ec02307 ([#102](https://github.com/linarr-org/linarr/issues/102))
+
+- **deps**: Update cimg/go:1.25.5 docker digest to b644c11 ([#103](https://github.com/linarr-org/linarr/issues/103))
+
+- **deps**: Update golangci/golangci-lint-action digest to 2e568c9 ([#104](https://github.com/linarr-org/linarr/issues/104))
 
 
 ### Testing
